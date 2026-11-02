@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.0.3-nome-mensageiro app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — nome corrigido' \
-            --notes 'O nome exibido no ícone do app agora é Mensageiro, sem o número 2. O identificador Android continua separado para coexistir com o app original. Nenhuma alteração foi feita às salas ou ao backend Nhost.' \
+          gh release create v2.1-app-principal app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro — app principal' \
+            --notes 'APK atualizado para usar o identificador Android do app Mensageiro principal, sem sufixo. O app original já foi desinstalado pelo usuário. A conta e dados remotos do Nhost não foram alterados; pode ser necessário entrar novamente. Nenhuma regra de salas nem backend foi alterado.' \
             --prerelease
