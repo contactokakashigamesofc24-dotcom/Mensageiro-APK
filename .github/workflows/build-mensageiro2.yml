@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.0-salas-publicas app/build/outputs/apk/debug/app-debug.apk \
-            --title 'Mensageiro 2 — salas públicas' \
-            --notes 'Cópia Android separada que usa o mesmo projeto Nhost e mantém as contas existentes. Salas públicas liberadas no cliente. O backend não foi alterado; validação real com contas ainda é necessária.' \
+          gh release create v2.0.1-nome-abaixo app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro 2 — nome abaixo de Conversas' \
+            --notes 'Ajuste visual solicitado: mostra o nome do usuário diretamente abaixo do título Conversas. Cópia Android separada que usa o mesmo projeto Nhost e mantém as contas existentes. O backend não foi alterado; valide as salas públicas somente após teste real.' \
             --prerelease
