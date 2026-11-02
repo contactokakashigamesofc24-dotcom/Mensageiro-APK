@@ -1,0 +1,35 @@
+name: Compilar Mensageiro 2 — salas públicas
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'mensageiro-2-fonte-salas-publicas.zip'
+      - '.github/workflows/build-mensageiro2.yml'
+permissions:
+  contents: write
+  actions: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extrair projeto Mensageiro 2
+        run: python3 -m zipfile -e mensageiro-2-fonte-salas-publicas.zip .
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar APK
+        run: gradle assembleDebug
+      - name: Publicar APK direto em Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v2.0-salas-publicas app/build/outputs/apk/debug/app-debug.apk \
+            --title 'Mensageiro 2 — salas públicas' \
+            --notes 'Cópia Android separada que usa o mesmo projeto Nhost e mantém as contas existentes. Salas públicas liberadas no cliente. O backend não foi alterado; validação real com contas ainda é necessária.' \
+            --prerelease
