@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.0.1-nome-abaixo app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro 2 — nome abaixo de Conversas' \
-            --notes 'Ajuste visual solicitado: mostra o nome do usuário diretamente abaixo do título Conversas. Cópia Android separada que usa o mesmo projeto Nhost e mantém as contas existentes. O backend não foi alterado; valide as salas públicas somente após teste real.' \
+          gh release create v2.0.2-cabecalho-corrigido app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro 2 — cabeçalho corrigido' \
+            --notes 'Ajuste visual: Conversas e nome do usuário aparecem em linhas separadas, com os ícones abaixo do cabeçalho. Remove saudação antiga e evita quebra vertical do título. Cópia Android separada que usa o mesmo projeto Nhost e mantém as contas existentes. O backend não foi alterado; valide as salas públicas somente após teste real.' \
             --prerelease
