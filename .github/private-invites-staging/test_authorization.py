@@ -71,8 +71,14 @@ def main():
  r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors') and len((r.get('data') or {}).get('invite_room_member_by_email') or [])==1,f'owner invite failed: {r}')
  # Repeating invite must remain idempotent.
  r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors'),f're-invite failed: {r}')
- # A non-owner cannot invite into the original private room.
- r=req(MEMBER,'user',invite,{'room':ROOM,'email':'outsider@example.test'});check(bool(r.get('errors')),'non-owner unexpectedly invited someone')
+ # Negative invitation cases: non-owner, unverified account, non-friend, self, and invalid address.
+ for uid,room,email,label in [(MEMBER,ROOM,'outsider@example.test','non-owner'),(OWNER,'10000000-0000-0000-0000-000000000003','unverified@example.test','unverified account'),(OWNER,'10000000-0000-0000-0000-000000000003','notfriend@example.test','non-friend'),(OWNER,'10000000-0000-0000-0000-000000000003','owner@example.test','self invite'),(OWNER,'10000000-0000-0000-0000-000000000003','bad','invalid email')]:
+  r=req(uid,'user',invite,{'room':room,'email':email});check(bool(r.get('errors')),f'{label} invitation unexpectedly succeeded')
+ # Anonymous callers cannot invoke owner invite.
+ anon=post('/v1/graphql',{'query':invite,'variables':{'room':ROOM,'email':'outsider@example.test'}})[1];check(bool(anon.get('errors')),'anonymous caller unexpectedly invoked invite')
+ # A non-owner cannot inspect the owner-only member list.
+ membersq='query($room:uuid!){owner_room_members(args:{p_room_id:$room}){user_id accepted_at}}'
+ r=req(MEMBER,'user',membersq,{'room':ROOM});check(bool(r.get('errors')),'non-owner read room member list')
  pendingq='query { my_pending_private_invites { room_id room_title inviter_id invited_at } }'
  r=req(PENDING,'user',pendingq);pending_rows=(r.get('data') or {}).get('my_pending_private_invites') or [];check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in pending_rows),f'pending invite missing: {r}')
  # Pending invitee cannot read private history before acceptance, even with the room UUID.
