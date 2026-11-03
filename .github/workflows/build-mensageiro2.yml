@@ -1,4 +1,4 @@
-name: Compilar Mensageiro 2 — hotfix lista salas
+name: Compilar Mensageiro 2 — etapa 3 validação de sessão
 on:
   workflow_dispatch:
   push:
@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.2.4-hotfix-lista app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — hotfix: lista de salas' \
-            --notes 'Hotfix: remove consulta a campo GraphQL privado inexistente que impedia listar salas públicas. Mantém detecção local da etapa 2; sem Gemini ou respostas automáticas. Não altera permissões nem regras das salas.' \
+          gh release create v2.2.5-etapa3-sessao app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro — etapa 3: validação de sessão' \
+            --notes 'Etapa 3: botão de teste chama Worker que apenas valida sessão Nhost; Worker sem acesso a banco, mensagens ou Gemini. Mantém respostas desligadas e regras de salas inalteradas.' \
             --prerelease
