@@ -52,6 +52,9 @@ jobs:
       - name: Carregar dados fictícios
         run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/fixture.sql
 
+      - name: Criar funções de convite no ambiente descartável
+        run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/functions.sql
+
       - name: Testar permissões de dono, membro aceito, pendente e terceiro
         run: python3 .github/private-invites-staging/test_authorization.py
 
