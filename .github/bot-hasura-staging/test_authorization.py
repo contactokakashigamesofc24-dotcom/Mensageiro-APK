@@ -32,7 +32,7 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'bot','permission':{'columns':['id','room_type'],'filter':{'room_type':{'_eq':'public'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'bot_room_allowlist'},'role':'bot','permission':{'columns':['room_id','bot_user_id'],'filter':{'bot_user_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'room_type':{'_eq':'public'}}}}})
- meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'bot','permission':{'check':{'room':{'room_type':{'_eq':'public'},'bot_room_allowlist':{'bot_user_id':{'_eq':'X-Hasura-User-Id'}}}},'set':{'sender_id':'x-hasura-user-id'},'columns':['room_id','body']}})
+ meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'bot','permission':{'check':{'room':{'room_type':{'_eq':'public'},'bot_room_allowlist':{'bot_user_id':{'_eq':'X-Hasura-User-Id'}}}},'set':{'sender_id':'x-hasura-user-id'},'columns':['room_id','body'],'backend_only':True}})
  query='mutation($room:uuid!,$body:String!){insert_messages_one(object:{room_id:$room,body:$body}){id}}'
  _,res=post('/v1/graphql',{'query':query,'variables':{'room':ALLOW,'body':'regular-user fake write'}},{'Authorization':'Bearer '+jwt('user',USER)})
  check(bool(res.get('errors')),'ordinary user unexpectedly inserted public message')
