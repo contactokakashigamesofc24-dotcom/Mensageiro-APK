@@ -57,6 +57,15 @@ def main():
  r=req(OUTSIDER,'user',q,{'id':PUBLIC});check(len((r.get('data') or {}).get('messages') or [])==1,'public history changed')
  ins='mutation($room:uuid!,$body:String!){insert_messages(objects:[{room_id:$room,body:$body}]){affected_rows returning{sender_id}}}'
  r=req(OUTSIDER,'user',ins,{'room':PUBLIC,'body':'still allowed synthetic public post'});rows=((r.get('data') or {}).get('insert_messages') or {}).get('returning') or [];check(len(rows)==1 and rows[0]['sender_id']==OUTSIDER,'normal public posting was changed')
+ # Candidate private posting permits an accepted member, while pending and outsider are denied.
+ r=req(MEMBER,'private_user_test',ins,{'room':ROOM,'body':'accepted member synthetic private post'});rows=((r.get('data') or {}).get('insert_messages') or {}).get('returning') or [];check(len(rows)==1 and rows[0]['sender_id']==MEMBER,'accepted member could not post to private room')
+ for uid,label in [(PENDING,'pending invitee'),(OUTSIDER,'outsider')]:
+  r=req(uid,'private_user_test',ins,{'room':ROOM,'body':'should be rejected'});check(bool(r.get('errors')) or not ((r.get('data') or {}).get('insert_messages') or {}).get('returning'),f'{label} posted to private room')
+ # Repeat invite for an already accepted member: keep the existing accepted membership.
+ invite='mutation($room:uuid!,$email:String!){invite_room_member_by_email(args:{p_room_id:$room,p_email:$email}){id}}'
+ r=req(OWNER,'user',invite,{'room':ROOM,'email':'accepted@example.test'});check(not r.get('errors'),f're-invite accepted member failed: {r}')
+ memq='query($room:uuid!){room_members(where:{room_id:{_eq:$room}}){room_id user_id accepted_at}}'
+ r=req(MEMBER,'user',memq,{'room':ROOM});members=(r.get('data') or {}).get('room_members') or [];check(len(members)==1 and members[0]['accepted_at'] is not None,'re-invite reset accepted membership or duplicated it')
  # Exercise the invite function against the second synthetic private room using its session_argument.
  invite='mutation($room:uuid!,$email:String!){invite_room_member_by_email(args:{p_room_id:$room,p_email:$email}){id}}'
  r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors') and len((r.get('data') or {}).get('invite_room_member_by_email') or [])==1,f'owner invite failed: {r}')
