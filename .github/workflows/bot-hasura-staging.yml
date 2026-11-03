@@ -2,10 +2,11 @@ name: Teste isolado do Bot (Hasura)
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [run-isolated-bot-test]
-  repository_dispatch:
-    types: [run-isolated-bot-test]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/bot-hasura-staging.yml
+      - .github/bot-hasura-staging/**
 
 permissions:
   contents: read
@@ -31,6 +32,11 @@ jobs:
             -e POSTGRES_PASSWORD=test-only-password \
             -e POSTGRES_DB=messenger_test \
             postgres:16
+          for i in $(seq 1 30); do
+            if docker exec bot-test-postgres pg_isready -U postgres -d messenger_test; then break; fi
+            sleep 2
+          done
+          docker exec bot-test-postgres pg_isready -U postgres -d messenger_test
           docker run -d --name bot-test-hasura --network bot-test-net -p 8080:8080 \
             -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only-password@bot-test-postgres:5432/messenger_test \
             -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only-password@bot-test-postgres:5432/messenger_test \
