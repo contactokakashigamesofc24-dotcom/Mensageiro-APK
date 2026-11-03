@@ -36,7 +36,7 @@ def main():
  query='mutation($room:uuid!,$body:String!){insert_messages_one(object:{room_id:$room,body:$body}){id}}'
  _,res=post('/v1/graphql',{'query':query,'variables':{'room':ALLOW,'body':'regular-user fake write'}},{'Authorization':'Bearer '+jwt('user',USER)})
  check(bool(res.get('errors')),'ordinary user unexpectedly inserted public message')
- bh={'Authorization':'Bearer '+jwt('bot',BOT)}
+ bh={'X-Hasura-Admin-Secret':ADMIN,'X-Hasura-Role':'bot','X-Hasura-User-Id':BOT,'X-Hasura-Use-Backend-Only-Permissions':'true'}
  _,res=post('/v1/graphql',{'query':query.replace('{id}','{id sender_id room_id}'),'variables':{'room':ALLOW,'body':'fake Bot reply'}},bh)
  row=(res.get('data') or {}).get('insert_messages_one');check(row and row['sender_id']==BOT and row['room_id']==ALLOW,f'allowlisted Bot insert failed: {res}')
  for room,label in [(OTHER,'unselected public'),(PRIVATE,'private')]:
