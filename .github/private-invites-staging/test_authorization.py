@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ephemeral synthetic tests for private-room invitations and membership authorization."""
 import base64,hashlib,hmac,json,urllib.request,urllib.error
-URL='http://127.0.0.1:8080';ADMIN='ephemeral-admin-only-for-this-job';SECRET='ephemeral-private-invite-test-only-secret'
+URL='http://127.0.0.1:8080';ADMIN='ephemeral-private-invite-test-admin';SECRET='ephemeral-private-invite-test-only-secret'
 OWNER='40000000-0000-0000-0000-000000000001';MEMBER='40000000-0000-0000-0000-000000000002';PENDING='40000000-0000-0000-0000-000000000003';OUTSIDER='40000000-0000-0000-0000-000000000004'
 ROOM='10000000-0000-0000-0000-000000000001';PUBLIC='10000000-0000-0000-0000-000000000002'
 def b64(v):return base64.urlsafe_b64encode(v).rstrip(b'=').decode()
