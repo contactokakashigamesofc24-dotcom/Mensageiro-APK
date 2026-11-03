@@ -23,8 +23,8 @@ def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  st,res=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN})
  check(st==200 and res.get('message')=='success',f'replace metadata: {res}')
- tables=[{'schema':'public','name':n} for n in ['rooms','bot_room_allowlist','messages']]
- meta('pg_track_tables',{'source':'default','tables':tables,'allow_warnings':False})
+ for name in ['rooms','bot_room_allowlist','messages']:
+  meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  # Explicitly configure safe read access and narrowly scoped Bot insert access.
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'bot_room_allowlist','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'bot_room_allowlist'},'column':'room_id'}}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
