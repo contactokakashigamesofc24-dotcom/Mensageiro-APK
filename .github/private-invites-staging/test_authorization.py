@@ -20,7 +20,7 @@ def check(ok,msg):
 def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
- for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests']:
+ for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
@@ -39,6 +39,9 @@ def main():
   meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_friend_requests'},'role':'user','permission':{'columns':['requester_id','recipient_id','status'],'filter':{'$or':[{'requester_id':{'_eq':'X-Hasura-User-Id'}},{'recipient_id':{'_eq':'X-Hasura-User-Id'}}]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_invite_results'},'role':'user','permission':{'columns':['invitee_id','room_id','room_title','inviter_id','invited_at'],'filter':{'invitee_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_accepted_room_results'},'role':'user','permission':{'columns':['member_id','room_id','room_title','owner_id','joined_at'],'filter':{'member_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_owner_member_results'},'role':'user','permission':{'columns':['owner_id','room_id','user_id','invited_by','accepted_at','invited_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'private_user_test','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
  q='query($id:uuid!){messages(where:{room_id:{_eq:$id}}){id sender_id body}}';rq='query { rooms { id title room_type } }'
  def req(uid,role,query,vars=None):return post('/v1/graphql',{'query':query,'variables':vars or {}},{'Authorization':'Bearer '+jwt(role,uid)})[1]
