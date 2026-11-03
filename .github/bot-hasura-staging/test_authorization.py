@@ -32,13 +32,15 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'bot','permission':{'columns':['id','room_type'],'filter':{'room_type':{'_eq':'public'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'bot_room_allowlist'},'role':'bot','permission':{'columns':['room_id','bot_user_id'],'filter':{'bot_user_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'room_type':{'_eq':'public'}}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'bot','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'sender_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'bot','permission':{'check':{'room':{'room_type':{'_eq':'public'},'bot_room_allowlist':{'bot_user_id':{'_eq':'X-Hasura-User-Id'}}}},'set':{'sender_id':'x-hasura-user-id'},'columns':['room_id','body'],'backend_only':True}})
  introspection='query { __type(name:"mutation_root") { fields { name } } }'
  _,schema=post('/v1/graphql',{'query':introspection},{'X-Hasura-Admin-Secret':ADMIN})
  fields=[f['name'] for f in (((schema.get('data') or {}).get('__type') or {}).get('fields') or [])]
- if 'insert_messages_one' not in fields:
-  raise AssertionError(f'Hasura schema missing insert_messages_one; mutation fields={fields}')
- query='mutation($room:uuid!,$body:String!){insert_messages_one(object:{room_id:$room,body:$body}){id}}'
+ if 'insert_messages' not in fields:
+  raise AssertionError(f'Hasura schema missing insert_messages; mutation fields={fields}')
+ query='mutation($room:uuid!,$body:String!){insert_messages(objects:[{room_id:$room,body:$body}]){affected_rows returning{id sender_id room_id}}}'
+ query_one='mutation($room:uuid!,$body:String!){insert_messages_one(object:{room_id:$room,body:$body}){id}}'
  _,res=post('/v1/graphql',{'query':query,'variables':{'room':ALLOW,'body':'regular-user fake write'}},{'Authorization':'Bearer '+jwt('user',USER)})
  check(bool(res.get('errors')),'ordinary user unexpectedly inserted public message')
  # Public-facing role bot must not see the backend-only mutation without trusted backend headers.
@@ -47,15 +49,16 @@ def main():
  # trusted backend-only mode must expose the constrained mutation.
  _,res=post('/v1/graphql',{'query':introspection},{'X-Hasura-Admin-Secret':ADMIN,'X-Hasura-Role':'bot','X-Hasura-User-Id':BOT,'X-Hasura-Use-Backend-Only-Permissions':'true'})
  trusted_fields=[f['name'] for f in (((res.get('data') or {}).get('__type') or {}).get('fields') or [])]
- check('insert_messages_one' in trusted_fields,f'backend-only mutation not exposed; fields={trusted_fields}')
- # Proceed with same constrained operation using the trusted server-only path.
+ check('insert_messages' in trusted_fields,f'backend-only mutation not exposed; fields={trusted_fields}')
+ # Only the trusted backend-only request may insert; sender preset comes from the authenticated Bot identity.
  bh={'X-Hasura-Admin-Secret':ADMIN,'X-Hasura-Role':'bot','X-Hasura-User-Id':BOT,'X-Hasura-Use-Backend-Only-Permissions':'true'}
- _,res=post('/v1/graphql',{'query':query.replace('{id}','{id sender_id room_id}'),'variables':{'room':ALLOW,'body':'fake Bot reply'}},bh)
- row=(res.get('data') or {}).get('insert_messages_one');check(row and row['sender_id']==BOT and row['room_id']==ALLOW,f'allowlisted Bot insert failed: {res}')
+ _,res=post('/v1/graphql',{'query':query,'variables':{'room':ALLOW,'body':'fake Bot reply'}},bh)
+ rows=((res.get('data') or {}).get('insert_messages') or {}).get('returning') or []
+ check(len(rows)==1 and rows[0]['sender_id']==BOT and rows[0]['room_id']==ALLOW,f'allowlisted Bot insert failed: {res}')
  for room,label in [(OTHER,'unselected public'),(PRIVATE,'private')]:
   _,res=post('/v1/graphql',{'query':query,'variables':{'room':room,'body':'must be denied'}},bh)
-  check(bool(res.get('errors')) and not (res.get('data') or {}).get('insert_messages_one'),f'Bot wrote to {label}: {res}')
- forged='mutation($room:uuid!,$body:String!,$sender:uuid!){insert_messages_one(object:{room_id:$room,body:$body,sender_id:$sender}){id sender_id}}'
+  check(bool(res.get('errors')) or ((res.get('data') or {}).get('insert_messages') or {}).get('affected_rows',0)==0,f'Bot wrote to {label}: {res}')
+ forged='mutation($room:uuid!,$body:String!,$sender:uuid!){insert_messages(objects:[{room_id:$room,body:$body,sender_id:$sender}]){affected_rows returning{sender_id}}}'
  _,res=post('/v1/graphql',{'query':forged,'variables':{'room':ALLOW,'body':'forged','sender':USER}},bh)
  check(bool(res.get('errors')),'client was able to set sender_id')
  print('PASS: regular user has no public insert permission')
