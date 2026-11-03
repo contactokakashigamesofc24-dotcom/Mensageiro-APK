@@ -1,4 +1,4 @@
-name: Compilar Mensageiro 2 — teste Gemini isolado
+name: Compilar Mensageiro 2 — etapa 3 inspeção somente leitura
 on:
   workflow_dispatch:
   push:
@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.2.7-gemini-isolado app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — etapa 3: teste Gemini isolado' \
-            --notes 'Etapa 3: pergunta fixa de teste enviada ao Worker Gemini isolado após validar sessão. Worker não acessa banco, mensagens ou salas e não publica respostas. Bot automático permanece desligado.' \
+          gh release create v2.2.8-leitura-permissoes app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro — etapa 3: inspeção somente leitura' \
+            --notes 'Etapa 3: adiciona inspeção GraphQL somente de leitura para verificar se a conta user expõe mutação de inserção. Não lê linhas nem grava dados; Worker sem autorização de publicação. Respostas automáticas continuam desligadas.' \
             --prerelease
