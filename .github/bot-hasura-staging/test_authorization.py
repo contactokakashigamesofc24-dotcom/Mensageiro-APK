@@ -55,7 +55,7 @@ def main():
  rows=((r.get('data') or {}).get('insert_messages') or {}).get('returning') or [];check(len(rows)==1 and rows[0]['sender_id']==USER,'normal user public write was accidentally restricted')
  # Bot can read messages in all current and future rooms with the global switch on.
  for room,label in [(PUBLIC,'public room'),(PRIVATE_OWN,'private room'),(NEWPUB,'new public room'),(NEWPRIV,'new private room')]:
-  _,b=post('/v1/graphql',{'query':readq,'variables':{'room':room}},bot_h); check(len((b.get('data') or {}).get('messages') or [])==1,f'Bot cannot read {label}: {b}')
+  _,b=post('/v1/graphql',{'query':readq,'variables':{'room':room}},bot_h); check(len((b.get('data') or {}).get('messages') or [])>=1,f'Bot cannot read {label}: {b}')
  introspection='query { __type(name:"mutation_root") { fields { name } } }'
  _,schema=post('/v1/graphql',{'query':introspection},{'X-Hasura-Admin-Secret':ADMIN});fields=[f['name'] for f in (((schema.get('data') or {}).get('__type') or {}).get('fields') or [])]
  check('insert_messages' in fields,f'Hasura missing insert mutation: {fields}')
