@@ -1,4 +1,4 @@
-name: Compilar Mensageiro 2 — salas públicas
+name: Compilar Mensageiro 2 — etapa 1 do bot
 on:
   workflow_dispatch:
   push:
@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.2.1-configuracoes-bot app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — configurações do bot' \
-            --notes 'Remove o controle global quebrado que chamava um campo ausente no Nhost e apresenta o espaço inicial do bot nas Configurações. Não modifica regras das salas nem o backend; o bot ainda não está operacional. Mantém identificador do app principal Mensageiro.' \
+          gh release create v2.2.2-etapa1-bot-configuracoes app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro — bot, etapa 1: Configurações' \
+            --notes 'Etapa 1: acrescenta controles visuais para respostas automáticas, comando /bot e seleção de salas públicas. Todos desativados e não funcionais nesta versão. Não altera backend, permissões nem regras de criação/uso de salas.' \
             --prerelease
