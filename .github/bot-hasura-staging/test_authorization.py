@@ -43,13 +43,16 @@ def main():
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'bot','permission':{'check':{'room':{'bot_settings':{'enabled':{'_eq':True},'scope':{'_eq':'all_rooms'}}}},'set':{'sender_id':'x-hasura-user-id'},'columns':['room_id','body'],'backend_only':True}})
  user_h={'Authorization':'Bearer '+jwt('user',USER)};bot_h={'Authorization':'Bearer '+jwt('bot',BOT)}
  readq='query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id body room_id sender_id}}'
- # Existing user permissions: regular public read/write remains. Private ownership criterion is created_by in exported metadata.
- _,r=post('/v1/graphql',{'query':readq,'variables':{'room':PUBLIC}},user_h); check(len((r.get('data') or {}).get('messages') or [])==1,f'user public read changed: {r}')
+ # Existing user permissions: regular public read/write remains and room visibility is public-or-owner.
+ roomq='query { rooms { id title room_type created_by } }'
+ _,r=post('/v1/graphql',{'query':roomq},user_h); visible=(r.get('data') or {}).get('rooms') or []
+ check(any(x['id']==PUBLIC for x in visible),f'user lost public-room visibility: {r}')
+ check(any(x['id']==PRIVATE_OWN for x in visible),f'user lost access to own private room: {r}')
+ check(not any(x['id']==NEWPRIV for x in visible),f'user can see private room created by another: {r}')
+ _,r=post('/v1/graphql',{'query':readq,'variables':{'room':PUBLIC}},user_h); check(len((r.get('data') or {}).get('messages') or [])==1,f'user public message read changed: {r}')
  insert='mutation($room:uuid!,$body:String!){insert_messages(objects:[{room_id:$room,body:$body}]){affected_rows returning{id sender_id room_id}}}'
  _,r=post('/v1/graphql',{'query':insert,'variables':{'room':PUBLIC,'body':'user normal public post'}},user_h)
  rows=((r.get('data') or {}).get('insert_messages') or {}).get('returning') or [];check(len(rows)==1 and rows[0]['sender_id']==USER,'normal user public write was accidentally restricted')
- _,r=post('/v1/graphql',{'query':readq,'variables':{'room':PRIVATE_OWN}},user_h);check(len((r.get('data') or {}).get('messages') or [])==1,'user should see private room created by them')
- _,r=post('/v1/graphql',{'query':readq,'variables':{'room':NEWPRIV}},user_h);check(not (r.get('data') or {}).get('messages'),'user unexpectedly reads private room created by another')
  # Bot can read messages in all current and future rooms with the global switch on.
  for room,label in [(PUBLIC,'public room'),(PRIVATE_OWN,'private room'),(NEWPUB,'new public room'),(NEWPRIV,'new private room')]:
   _,b=post('/v1/graphql',{'query':readq,'variables':{'room':room}},bot_h); check(len((b.get('data') or {}).get('messages') or [])==1,f'Bot cannot read {label}: {b}')
