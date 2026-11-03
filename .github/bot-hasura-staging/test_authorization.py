@@ -29,7 +29,6 @@ def main():
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'room_members'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
- meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'room_members'},'name':'bot_settings','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'bot_settings'},'column':'id'}}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'bot_settings'},'name':'rooms','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'rooms'},'column':'bot_settings_id'}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'bot_settings'},'role':'bot','permission':{'columns':['id','enabled','scope'],'filter':{'id':{'_eq':SETTINGS}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','bot_settings_id'],'filter':{}}})
