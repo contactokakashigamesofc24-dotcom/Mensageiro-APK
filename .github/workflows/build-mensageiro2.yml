@@ -1,4 +1,4 @@
-name: Compilar Mensageiro 2 — etapa 1 do bot
+name: Compilar Mensageiro 2 — hotfix lista salas
 on:
   workflow_dispatch:
   push:
@@ -29,7 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.2.3-etapa2-deteccao app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — bot, etapa 2: detecção local' \
-            --notes 'Etapa 2: adiciona apenas detecção local de mensagens novas de outras contas enquanto o chat público está aberto. Nenhuma mensagem é enviada ao Gemini ou respondida. Não altera backend, permissões nem regras de criação/uso de salas.' \
+          gh release create v2.2.4-hotfix-lista app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title 'Mensageiro — hotfix: lista de salas' \
+            --notes 'Hotfix: remove consulta a campo GraphQL privado inexistente que impedia listar salas públicas. Mantém detecção local da etapa 2; sem Gemini ou respostas automáticas. Não altera permissões nem regras das salas.' \
             --prerelease
