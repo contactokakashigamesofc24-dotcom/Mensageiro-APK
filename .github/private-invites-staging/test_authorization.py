@@ -22,6 +22,8 @@ def main():
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
  for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
+ meta('pg_track_table',{'source':'default','table':{'schema':'auth','name':'users'}})
+ meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'owner','using':{'foreign_key_constraint_on':{'table':{'schema':'auth','name':'users'},'column':'id'}}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}})
@@ -32,6 +34,13 @@ def main():
  accepted={'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by'],'filter':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}}})
+ meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
+ # These function permissions are applied only to the isolated Hasura instance.
+ for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members']:
+  meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
+  meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_friend_requests'},'role':'user','permission':{'columns':['requester_id','recipient_id','status'],'filter':{'$or':[{'requester_id':{'_eq':'X-Hasura-User-Id'}},{'recipient_id':{'_eq':'X-Hasura-User-Id'}}]}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'private_user_test','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
  q='query($id:uuid!){messages(where:{room_id:{_eq:$id}}){id sender_id body}}';rq='query { rooms { id title room_type } }'
  def req(uid,role,query,vars=None):return post('/v1/graphql',{'query':query,'variables':vars or {}},{'Authorization':'Bearer '+jwt(role,uid)})[1]
@@ -47,11 +56,32 @@ def main():
  r=req(OUTSIDER,'user',q,{'id':PUBLIC});check(len((r.get('data') or {}).get('messages') or [])==1,'public history changed')
  ins='mutation($room:uuid!,$body:String!){insert_messages(objects:[{room_id:$room,body:$body}]){affected_rows returning{sender_id}}}'
  r=req(OUTSIDER,'user',ins,{'room':PUBLIC,'body':'still allowed synthetic public post'});rows=((r.get('data') or {}).get('insert_messages') or {}).get('returning') or [];check(len(rows)==1 and rows[0]['sender_id']==OUTSIDER,'normal public posting was changed')
- # Ensure client cannot directly add/accept membership; no insert/update permission on room_members.
+ # Exercise the invite function against the second synthetic private room using its session_argument.
+ invite='mutation($room:uuid!,$email:String!){invite_room_member_by_email(args:{p_room_id:$room,p_email:$email}){id}}'
+ r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors') and len((r.get('data') or {}).get('invite_room_member_by_email') or [])==1,f'owner invite failed: {r}')
+ # Repeating invite must remain idempotent.
+ r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors'),f're-invite failed: {r}')
+ # A non-owner cannot invite into the original private room.
+ r=req(MEMBER,'user',invite,{'room':ROOM,'email':'outsider@example.test'});check(bool(r.get('errors')),'non-owner unexpectedly invited someone')
+ pendingq='query { my_pending_private_invites { room_id room_title inviter_id invited_at } }'
+ r=req(PENDING,'user',pendingq);pending_rows=(r.get('data') or {}).get('my_pending_private_invites') or [];check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in pending_rows),f'pending invite missing: {r}')
+ # Pending invitee cannot read private history before acceptance, even with the room UUID.
+ r=req(PENDING,'private_user_test',q,{'id':'10000000-0000-0000-0000-000000000003'});check(not (r.get('data') or {}).get('messages'),'pending invitee read before accepting')
+ # Outsider cannot accept another user's invitation.
+ accept='mutation($room:uuid!){accept_private_room_invite(args:{p_room_id:$room}){room_id accepted_at}}'
+ r=req(OUTSIDER,'user',accept,{'room':'10000000-0000-0000-0000-000000000003'});check(bool(r.get('errors')),'outsider accepted an invitation')
+ # Invitee accepts; access begins, pending item disappears, and re-accept by outsider remains denied.
+ r=req(PENDING,'user',accept,{'room':'10000000-0000-0000-0000-000000000003'});check(not r.get('errors') and len((r.get('data') or {}).get('accept_private_room_invite') or [])==1,f'accept failed: {r}')
+ r=req(PENDING,'user',pendingq);check(not any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in ((r.get('data') or {}).get('my_pending_private_invites') or [])),'accepted invite still pending')
+ acceptedq='query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }'
+ r=req(PENDING,'user',acceptedq);check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in ((r.get('data') or {}).get('my_accepted_private_rooms') or [])),f'accepted room missing: {r}')
+ r=req(PENDING,'private_user_test',q,{'id':'10000000-0000-0000-0000-000000000003'});check(len((r.get('data') or {}).get('messages') or [])==0,'new empty accepted room unexpectedly contains messages')
+ # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
  print('PASS: current exported private message policy owner-only reproduced; accepted member denied')
  print('PASS: candidate policy grants owner and accepted member, denies pending/outsider for known UUID')
- print('PASS: existing public read/write remains available; direct client membership insert denied')
- print('NOTE: no invite/accept SECURITY DEFINER functions installed or invoked in this fixture; not production validation')
+ print('PASS: invite is owner-only and idempotent; pending has no history; accept grants membership')
+ print('PASS: public read/write remains; direct client membership insertion denied')
+ print('NOTE: synthetic ephemeral database and JWT only; no production Nhost/Auth/app test')
 if __name__=='__main__':main()
