@@ -1,0 +1,54 @@
+name: Teste isolado do Bot (Hasura)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mensageiro-bot-hasura-staging
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Hasura efêmero com dados fictícios
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Iniciar PostgreSQL e Hasura de teste
+        run: |
+          set -e
+          docker network create bot-test-net
+          docker run -d --name bot-test-postgres --network bot-test-net \
+            -e POSTGRES_PASSWORD=test-only-password \
+            -e POSTGRES_DB=messenger_test \
+            postgres:16
+          docker run -d --name bot-test-hasura --network bot-test-net -p 8080:8080 \
+            -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only-password@bot-test-postgres:5432/messenger_test \
+            -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only-password@bot-test-postgres:5432/messenger_test \
+            -e HASURA_GRAPHQL_ADMIN_SECRET=ephemeral-admin-only-for-this-job \
+            -e HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"ephemeral-jwt-secret-for-this-job-only-32bytes","claims_namespace":"https://hasura.io/jwt/claims"}' \
+            -e HASURA_GRAPHQL_ENABLE_CONSOLE=false \
+            hasura/graphql-engine:v2.44.0
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8080/healthz >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs bot-test-hasura
+          exit 1
+
+      - name: Criar tabelas e fixtures fictícias
+        run: docker exec -i bot-test-postgres psql -v ON_ERROR_STOP=1 -U postgres -d messenger_test < .github/bot-hasura-staging/fixture.sql
+
+      - name: Testar permissões e identidade restrita do Bot
+        run: python3 .github/bot-hasura-staging/test_authorization.py
+
+      - name: Encerrar ambiente efêmero
+        if: always()
+        run: |
+          docker rm -f bot-test-hasura bot-test-postgres 2>/dev/null || true
+          docker network rm bot-test-net 2>/dev/null || true
