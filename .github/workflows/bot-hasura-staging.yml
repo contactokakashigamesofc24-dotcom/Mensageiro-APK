@@ -2,6 +2,10 @@ name: Teste isolado do Bot (Hasura)
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [run-isolated-bot-test]
+  repository_dispatch:
+    types: [run-isolated-bot-test]
 
 permissions:
   contents: read
