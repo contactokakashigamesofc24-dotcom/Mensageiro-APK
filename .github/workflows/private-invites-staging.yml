@@ -1,0 +1,62 @@
+name: Teste isolado de convites privados
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/private-invites-staging.yml
+      - .github/private-invites-staging/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: messenger-private-invites-staging
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Hasura efêmero — convites privados
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Iniciar ambiente de teste descartável
+        run: |
+          set -e
+          docker network create private-invite-test
+          docker run -d --name private-invite-postgres --network private-invite-test \
+            -e POSTGRES_PASSWORD=test-only-password \
+            -e POSTGRES_DB=private_invite_test postgres:16
+          for i in $(seq 1 30); do
+            if docker exec private-invite-postgres pg_isready -U postgres -d private_invite_test; then break; fi
+            sleep 2
+          done
+          docker exec private-invite-postgres pg_isready -U postgres -d private_invite_test
+          docker run -d --name private-invite-hasura --network private-invite-test -p 8080:8080 \
+            -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only-password@private-invite-postgres:5432/private_invite_test \
+            -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only-password@private-invite-postgres:5432/private_invite_test \
+            -e HASURA_GRAPHQL_ADMIN_SECRET=ephemeral-private-invite-test-admin \
+            -e HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"ephemeral-private-invite-test-only-secret","claims_namespace":"https://hasura.io/jwt/claims"}' \
+            -e HASURA_GRAPHQL_ENABLE_CONSOLE=false hasura/graphql-engine:v2.44.0
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8080/healthz >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs private-invite-hasura
+          exit 1
+
+      - name: Carregar dados fictícios
+        run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/fixture.sql
+
+      - name: Testar permissões de dono, membro aceito, pendente e terceiro
+        run: python3 .github/private-invites-staging/test_authorization.py
+
+      - name: Apagar ambiente temporário
+        if: always()
+        run: |
+          docker rm -f private-invite-hasura private-invite-postgres 2>/dev/null || true
+          docker network rm private-invite-test 2>/dev/null || true
