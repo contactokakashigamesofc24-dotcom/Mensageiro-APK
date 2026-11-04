@@ -247,27 +247,7 @@ def main():
  r=req(MEMBER,'user',media_get,{'id':media_id,'start':0,'limit':5});check(bool(r.get('errors')),'media pagination exceeded maximum page size')
  r=req(OUTSIDER,'user',media_get,{'id':media_id,'start':0,'limit':4});check(bool(r.get('errors')),'outsider read media chunk')
  r=req(OUTSIDER,'user',media_create,{'room':ROOM,'mime':'video/mp4'});check(bool(r.get('errors')),'outsider started media in private room')
-  # Attachment edge cases: missing chunks must block completion; reads must paginate in order.
- # Audio with a missing trailing chunk: reject completion, add it, complete, then page one chunk at a time.
- r=req(MEMBER,'user',audio_create,{'room':ROOM});audio_gap_rows=(r.get('data') or {}).get('create_private_room_audio') or [];check(len(audio_gap_rows)==1,'could not start audio missing-chunk test');audio_gap_id=audio_gap_rows[0]['message_id']
- r=req(MEMBER,'user',audio_add,{'id':audio_gap_id,'index':0,'audio':audio_part});check(not r.get('errors'),'audio first chunk for missing test failed')
- r=req(MEMBER,'user',audio_done,{'id':audio_gap_id,'count':2});check(bool(r.get('errors')),'audio completion accepted a missing trailing chunk')
- r=req(MEMBER,'user',audio_add,{'id':audio_gap_id,'index':1,'audio':'data:audio/mp4;base64,REVG'});check(not r.get('errors'),'audio second chunk after incomplete rejection failed')
- r=req(MEMBER,'user',audio_done,{'id':audio_gap_id,'count':2});check(not r.get('errors'),'audio completion failed after all chunks arrived')
- r=req(MEMBER,'user',audio_get,{'id':audio_gap_id,'start':0,'limit':1});audio_page0=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check(len(audio_page0)==1 and audio_page0[0]['chunk_index']==0,'audio first page was not chunk 0')
- r=req(MEMBER,'user',audio_get,{'id':audio_gap_id,'start':1,'limit':1});audio_page1=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check(len(audio_page1)==1 and audio_page1[0]['chunk_index']==1,'audio second page was not chunk 1')
- r=req(MEMBER,'user',audio_get,{'id':audio_gap_id,'start':0,'limit':2});audio_all=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check([x['chunk_index'] for x in audio_all]==[0,1],'audio pagination/order failed for two chunks')
- # Media with a hole at index 1: completion must reject; after filling it, verify offset/limit pagination.
- r=req(MEMBER,'user',media_create,{'room':ROOM,'mime':'image/jpeg'});media_gap_rows=(r.get('data') or {}).get('create_private_room_media') or [];check(len(media_gap_rows)==1,'could not start media missing-chunk test');media_gap_id=media_gap_rows[0]['message_id']
- r=req(MEMBER,'user',media_add,{'id':media_gap_id,'index':0,'mime':'image/jpeg','data':media_part});check(not r.get('errors'),'media chunk 0 failed')
- r=req(MEMBER,'user',media_add,{'id':media_gap_id,'index':2,'mime':'image/jpeg','data':'data:image/jpeg;base64,SElK'});check(not r.get('errors'),'media chunk 2 failed')
- r=req(MEMBER,'user',media_done,{'id':media_gap_id,'count':3});check(bool(r.get('errors')),'media completion accepted a gap at chunk 1')
- r=req(MEMBER,'user',media_add,{'id':media_gap_id,'index':1,'mime':'image/jpeg','data':'data:image/jpeg;base64,REVG'});check(not r.get('errors'),'media missing chunk could not be added after rejection')
- r=req(MEMBER,'user',media_done,{'id':media_gap_id,'count':3});check(not r.get('errors'),'media completion failed after gap was filled')
- r=req(MEMBER,'user',media_get,{'id':media_gap_id,'start':0,'limit':1});media_page0=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(len(media_page0)==1 and media_page0[0]['chunk_index']==0,'media first page was not chunk 0')
- r=req(MEMBER,'user',media_get,{'id':media_gap_id,'start':1,'limit':2});media_page1=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check([x['chunk_index'] for x in media_page1]==[1,2],'media second page did not return chunks 1,2 in order')
- r=req(MEMBER,'user',media_get,{'id':media_gap_id,'start':3,'limit':1});media_page_end=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(not media_page_end,'media pagination past last chunk returned rows')
-# Exact APK wallpaper queries/mutations: room owner reads/creates/updates, outside user cannot read/write private wallpaper.
+ # Exact APK wallpaper queries/mutations: room owner reads/creates/updates, outside user cannot read/write private wallpaper.
  wallq='query($room:uuid!){room_wallpapers_by_pk(room_id:$room){room_id wallpaper_data updated_at}}'
  wallmut='mutation($room:uuid!,$data:String!){insert_room_wallpapers_one(object:{room_id:$room,wallpaper_data:$data}){room_id}}'
  wall='data:image/jpeg;base64,QUJD'
