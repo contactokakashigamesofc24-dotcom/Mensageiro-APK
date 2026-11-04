@@ -20,7 +20,7 @@ def check(ok,msg):
 def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
- for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result']:
+ for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
@@ -38,7 +38,7 @@ def main():
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'check':{'room_type':{'_eq':'private'}},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
  # The preceding private_user_test messages insert permission already represents the exact direct APK insert shape.
  # These function permissions are applied only to the isolated Hasura instance.
- for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate']:
+ for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
   meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
@@ -48,6 +48,9 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_owner_member_results'},'role':'user','permission':{'columns':['owner_id','room_id','user_id','invited_by','accepted_at','invited_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_room_results'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'created_by':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_room_results'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_result'},'role':'user','permission':{'columns':['room_id','group_title','owner_id','created_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_invite_result'},'role':'user','permission':{'columns':['room_id','group_title','inviter_id','invited_at','invitee_id'],'filter':{'invitee_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_member_result'},'role':'user','permission':{'columns':['room_id','group_title','owner_id','member_id','accepted_at'],'filter':{'member_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'message_result'},'role':'user','permission':{'columns':['id','sender_id'],'filter':{'sender_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'message_result'},'role':'private_user_test','permission':{'columns':['id','sender_id'],'filter':{'sender_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'private_user_test','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
@@ -112,6 +115,10 @@ def main():
  acceptedq='query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }'
  r=req(PENDING,'user',acceptedq);check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in ((r.get('data') or {}).get('my_accepted_private_rooms') or [])),f'accepted room missing: {r}')
  r=req(PENDING,'private_user_test',q,{'id':'10000000-0000-0000-0000-000000000003'});check(len((r.get('data') or {}).get('messages') or [])==0,'new empty accepted room unexpectedly contains messages')
+ # The isolated candidate functions use the same root field names and argument objects as the APK operations.
+ for fn in ['create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite']:
+  meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
+  meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
  # Exercise the exact direct insert GraphQL field/argument shapes currently used by the APK.
  apk_create='mutation($object:rooms_insert_input!){insert_rooms_one(object:$object){id title room_type created_by}}'
  r=req(OWNER,'private_user_test',apk_create,{'object':{'title':'Synthetic APK-created private room','room_type':'private'}});created=((r.get('data') or {}).get('insert_rooms_one') or {});check(created.get('room_type')=='private' and created.get('created_by')==OWNER,f'APK insert_rooms_one failed for owner: {r}');apk_room=created['id']
@@ -133,6 +140,19 @@ def main():
   r=req(uid,'user',sendq,{'room':ROOM,'body':'denied function message'});check(bool(r.get('errors')),f'{label} sent private function message')
  r=req(OWNER,'user',sendq,{'room':PUBLIC,'body':'public not allowed via private function'});check(bool(r.get('errors')),'private-message function accepted a public room')
  r=req(OWNER,'user',sendq,{'room':ROOM,'body':'   '});check(bool(r.get('errors')),'empty message body accepted')
+ # Test group functions against the GraphQL names, argument names, and response fields used by the APK.
+ group_mut='mutation($title:String!,$members:[uuid!]!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
+ r=req(OWNER,'user',group_mut,{'title':'Synthetic group','members':[OUTSIDER]});rows=(r.get('data') or {}).get('create_private_messenger_group') or [];check(len(rows)==1 and rows[0]['group_title']=='Synthetic group',f'group create operation failed: {r}');group_id=rows[0]['room_id']
+ group_list='query { my_messenger_groups { room_id group_title owner_id } }'
+ r=req(OWNER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'owner group listing missing')
+ pending_group='query { my_pending_group_invites { room_id group_title inviter_id invited_at } }'
+ r=req(OUTSIDER,'user',pending_group);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_pending_group_invites') or [])),f'group invite missing: {r}')
+ outsider_group='query { my_messenger_groups { room_id group_title owner_id } }'
+ r=req(PENDING,'user',outsider_group);check(not any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'non-member listed group before acceptance')
+ accept_group='mutation($room:uuid!){accept_messenger_group_invite(args:{p_room_id:$room}){room_id accepted_at}}'
+ r=req(MEMBER,'user',accept_group,{'room':group_id});check(bool(r.get('errors')),'non-invitee accepted group invitation')
+ r=req(OUTSIDER,'user',accept_group,{'room':group_id});check(not r.get('errors') and len((r.get('data') or {}).get('accept_messenger_group_invite') or [])==1,f'invitee could not accept group: {r}')
+ r=req(OUTSIDER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'accepted group member not listed')
  # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
