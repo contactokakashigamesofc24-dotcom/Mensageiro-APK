@@ -34,6 +34,9 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by'],'filter':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}}})
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
+ # Candidate role's direct insert permissions mirror the APK's insert_rooms_one / insert_messages_one shapes.
+ meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'check':{'room_type':{'_eq':'private'}},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
+ meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'room':{'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
  # These function permissions are applied only to the isolated Hasura instance.
  for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
@@ -109,6 +112,14 @@ def main():
  acceptedq='query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }'
  r=req(PENDING,'user',acceptedq);check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in ((r.get('data') or {}).get('my_accepted_private_rooms') or [])),f'accepted room missing: {r}')
  r=req(PENDING,'private_user_test',q,{'id':'10000000-0000-0000-0000-000000000003'});check(len((r.get('data') or {}).get('messages') or [])==0,'new empty accepted room unexpectedly contains messages')
+ # Exercise the exact direct insert GraphQL field/argument shapes currently used by the APK.
+ apk_create='mutation($object:rooms_insert_input!){insert_rooms_one(object:$object){id title room_type created_by}}'
+ r=req(OWNER,'private_user_test',apk_create,{'object':{'title':'Synthetic APK-created private room','room_type':'private'}});created=((r.get('data') or {}).get('insert_rooms_one') or {});check(created.get('room_type')=='private' and created.get('created_by')==OWNER,f'APK insert_rooms_one failed for owner: {r}');apk_room=created['id']
+ r=req(OUTSIDER,'private_user_test',apk_create,{'object':{'title':'Forged public room','room_type':'public'}});check(bool(r.get('errors')) or not (r.get('data') or {}).get('insert_rooms_one'),'APK insert_rooms_one created a public room through private role')
+ apk_send='mutation($object:messages_insert_input!){insert_messages_one(object:$object){id sender_id}}'
+ r=req(MEMBER,'private_user_test',apk_send,{'object':{'room_id':ROOM,'body':'Accepted member through exact APK insert'}});posted=((r.get('data') or {}).get('insert_messages_one') or {});check(posted.get('sender_id')==MEMBER,f'APK insert_messages_one failed for accepted member: {r}')
+ for uid,label in [(PENDING,'pending invitee'),(OUTSIDER,'outsider')]:
+  r=req(uid,'private_user_test',apk_send,{'object':{'room_id':ROOM,'body':'Should be rejected'}});check(bool(r.get('errors')) or not (r.get('data') or {}).get('insert_messages_one'),f'{label} used APK insert_messages_one in private room')
  # Exercise candidate replacements for private-room creation/listing and private message sending.
  createq='mutation($title:String!){create_private_room_candidate(args:{p_title:$title}){id title room_type created_by created_at}}'
  r=req(OWNER,'user',createq,{'title':'Synthetic created private room'});created=((r.get('data') or {}).get('create_private_room_candidate') or []);check(len(created)==1 and created[0]['room_type']=='private' and created[0]['created_by']==OWNER,f'private room creation failed: {r}');new_room=created[0]['id']
