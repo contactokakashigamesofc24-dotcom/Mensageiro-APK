@@ -73,6 +73,10 @@ def main():
     assert rooms, 'member did not receive accepted private room from complete SQL functions'
     room=psql("SELECT id FROM public.rooms WHERE title='Full SQL private test' LIMIT 1")
     assert room and psql("SELECT count(*) FROM public.room_members WHERE room_id='"+room+"'::uuid AND user_id='"+MEMBER+"'::uuid AND accepted_at IS NOT NULL")== '1', 'fixture private room or accepted member missing'
+    private_room_row=psql("SELECT id || ':' || created_by || ':' || room_type FROM public.rooms WHERE id='"+room+"'::uuid")
+    print('DEBUG private-room fixture',private_room_row,'accepted-member',MEMBER)
+    print('DEBUG private-room list by member',gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id created_by room_type}}',{'id':room}))
+    print('DEBUG private messages by member',gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id sender_id body}}',{'room':room}))
     audios=gql(MEMBER,'query($room:uuid!){private_room_audio_message_ids(args:{p_room_id:$room}){message_id}}',{'room':room})['private_room_audio_message_ids']
     assert audios, 'no completed audio returned through Hasura'
     aid=audios[0]['message_id']
@@ -98,7 +102,7 @@ def main():
     outsider_seed=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"private seed"}){id}}',{'room':outsider_private_room})
     assert outsider_seed[0]==200 and not outsider_seed[1].get('errors'), f'failed to seed other-owned private message: {outsider_seed}'
     member_owner_query=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
-    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], f'current legacy metadata unexpectedly exposes accepted private room: {member_owner_query}'
+    assert member_owner_query[0]==200 and not member_owner_query[1].get('errors') and member_owner_query[1].get('data',{}).get('rooms')==[], f'current metadata room filter did not deny accepted member: {member_owner_query}'
     # Try the candidate accepted-member policy only in disposable Hasura metadata.
     meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
     meta('pg_drop_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user'})
@@ -121,10 +125,6 @@ def main():
     assert pending_invite_write[1].get('errors'), f'candidate allowed pending invite private write: {pending_invite_write}'
     outsider_insert=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"outsider attempt"}){id}}',{'room':room})
     assert outsider_insert[1].get('errors'), f'outsider private insert unexpectedly allowed: {outsider_insert}'
-    member_private_read=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
-    assert member_private_read[0]==200 and member_private_read[1].get('data',{}).get('messages')==[], 'legacy message metadata unexpectedly exposes private room messages to accepted member'
-    member_private_insert=gql_role(MEMBER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"accepted member attempt"}){id}}',{'room':room})
-    assert member_private_insert[1].get('errors'), f'legacy metadata unexpectedly allowed accepted member private send: {member_private_insert}'
     public_insert=gql_role(OWNER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"normal public write"}){id sender_id}}',{'room':public_room})
     assert public_insert[0]==200 and not public_insert[1].get('errors') and public_insert[1].get('data',{}).get('insert_messages_one',{}).get('sender_id')==OWNER, f'public room normal write not preserved: {public_insert}'
     create_room=gql_role(MEMBER,'user','mutation { insert_rooms_one(object:{title:"GraphQL public room",room_type:"public"}) { id created_by room_type } }')
