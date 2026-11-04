@@ -234,7 +234,7 @@ def main():
  media_add='mutation($id:uuid!,$index:Int!,$mime:String!,$data:String!){add_private_room_media_chunk(args:{p_message_id:$id,p_chunk_index:$index,p_mime_type:$mime,p_media_data:$data}){chunk_index}}'
  r=req(MEMBER,'user',media_add,{'id':media_id,'index':0,'mime':'image/jpeg','data':media_part});check(not r.get('errors'),f'media chunk 0 add failed: {r}')
  r=req(MEMBER,'user',media_add,{'id':media_id,'index':1,'mime':'image/jpeg','data':media_part2});check(not r.get('errors'),f'media chunk 1 add failed: {r}')
- media_done='mutation($id:uuid!,$count:Int!){complete_private_room_media(args:{p_message_id:$id,p_chunk_count:$count){message_id}}'
+ media_done='mutation($id:uuid!,$count:Int!){complete_private_room_media(args:{p_message_id:$id,p_chunk_count:$count}){message_id}}'
  r=req(MEMBER,'user',media_done,{'id':media_id,'count':1});check(bool(r.get('errors')),'media with missing chunk was marked complete')
  r=req(MEMBER,'user',media_done,{'id':media_id,'count':2});check(not r.get('errors'),f'media completion failed: {r}')
  media_ids='query($roomId:uuid!){private_room_media_message_ids(args:{p_room_id:$roomId}){message_id mime_type}}'
