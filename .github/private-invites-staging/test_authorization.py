@@ -36,7 +36,7 @@ def main():
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
  # Candidate role's direct insert permissions mirror the APK's insert_rooms_one / insert_messages_one shapes.
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'check':{'room_type':{'_eq':'private'}},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
- meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'room':{'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
+ # The preceding private_user_test messages insert permission already represents the exact direct APK insert shape.
  # These function permissions are applied only to the isolated Hasura instance.
  for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
