@@ -2,7 +2,7 @@
 """Ephemeral synthetic tests for private-room invitations and membership authorization."""
 import base64,hashlib,hmac,json,urllib.request,urllib.error
 URL='http://127.0.0.1:8080';ADMIN='ephemeral-private-invite-test-admin';SECRET='ephemeral-private-invite-test-only-secret'
-OWNER='40000000-0000-0000-0000-000000000001';MEMBER='40000000-0000-0000-0000-000000000002';PENDING='40000000-0000-0000-0000-000000000003';OUTSIDER='40000000-0000-0000-0000-000000000004'
+OWNER='40000000-0000-0000-0000-000000000001';MEMBER='40000000-0000-0000-0000-000000000002';PENDING='40000000-0000-0000-0000-000000000003';OUTSIDER='40000000-0000-0000-0000-000000000004';NOTFRIEND='40000000-0000-0000-0000-000000000006'
 ROOM='10000000-0000-0000-0000-000000000001';PUBLIC='10000000-0000-0000-0000-000000000002'
 def b64(v):return base64.urlsafe_b64encode(v).rstrip(b'=').decode()
 def jwt(role,uid):
@@ -75,11 +75,11 @@ def main():
  friendreq='mutation($email:String!){request_friend_by_email(args:{p_email:$email}){request_id}}'
  r=req(OWNER,'user',friendreq,{'email':'notfriend@example.test'});requests=(r.get('data') or {}).get('request_friend_by_email') or [];check(len(requests)==1,'friend request failed');request_id=requests[0]['request_id']
  incoming='query { my_incoming_friend_requests { request_id user_id display_name avatar_data } }'
- r=req(OUTSIDER,'user',incoming);items=(r.get('data') or {}).get('my_incoming_friend_requests') or [];check(any(x['request_id']==request_id and x['user_id']==OWNER for x in items),'recipient did not see own incoming friend request')
+ r=req(NOTFRIEND,'user',incoming);items=(r.get('data') or {}).get('my_incoming_friend_requests') or [];check(any(x['request_id']==request_id and x['user_id']==OWNER for x in items),'recipient did not see own incoming friend request')
  r=req(PENDING,'user',incoming);check(not ((r.get('data') or {}).get('my_incoming_friend_requests') or []),'unrelated user saw incoming friend request')
  respond='mutation($id:uuid!,$accept:Boolean!){respond_friend_request(args:{p_request_id:$id,p_accept:$accept}){request_id status}}'
  r=req(OWNER,'user',respond,{'id':request_id,'accept':True});check(bool(r.get('errors')),'requester responded as recipient')
- r=req(OUTSIDER,'user',respond,{'id':request_id,'accept':True});rows=(r.get('data') or {}).get('respond_friend_request') or [];check(len(rows)==1 and rows[0]['status']=='accepted',f'recipient could not accept friend request: {r}')
+ r=req(NOTFRIEND,'user',respond,{'id':request_id,'accept':True});rows=(r.get('data') or {}).get('respond_friend_request') or [];check(len(rows)==1 and rows[0]['status']=='accepted',f'recipient could not accept friend request: {r}')
  friends='query { my_messenger_friends { user_id display_name avatar_data } }'
  r=req(OWNER,'user',friends);check(any(x['user_id']==OUTSIDER for x in ((r.get('data') or {}).get('my_messenger_friends') or [])),'accepted friend missing from APK list')
  setpresence='mutation($online:Boolean!){set_my_presence(args:{p_online:$online}){user_id last_seen}}'
