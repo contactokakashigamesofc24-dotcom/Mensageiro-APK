@@ -38,6 +38,8 @@ CREATE VIEW public.friend_request_result AS SELECT request_id,status FROM public
 CREATE VIEW public.friend_profile_result AS SELECT f.viewer_id,p.user_id,p.display_name,p.avatar_data FROM public.messenger_profiles p JOIN (SELECT requester_id AS viewer_id,recipient_id AS friend_id FROM public.messenger_friend_requests WHERE status='accepted' UNION ALL SELECT recipient_id,requester_id FROM public.messenger_friend_requests WHERE status='accepted') f ON f.friend_id=p.user_id;
 CREATE VIEW public.incoming_friend_result AS SELECT r.recipient_id AS viewer_id,r.request_id,p.user_id,p.display_name,p.avatar_data FROM public.messenger_friend_requests r JOIN public.messenger_profiles p ON p.user_id=r.requester_id WHERE r.status='pending';
 CREATE VIEW public.presence_result AS SELECT p.user_id,p.last_seen FROM public.messenger_presence p;
+CREATE VIEW public.message_profile_result AS SELECT p.display_name,p.avatar_data FROM public.messenger_profiles p;
+CREATE VIEW public.room_message_profile_result AS SELECT p.user_id AS sender_id,p.display_name,p.avatar_data FROM public.messenger_profiles p;
 CREATE VIEW public.friend_presence_result AS SELECT f.requester_id AS user_id,false AS is_online,NULL::timestamptz AS last_seen FROM public.messenger_friend_requests f WHERE f.status='accepted';
 -- Read-only views provide Hasura-trackable composite return types for synthetic list functions.
 CREATE VIEW public.private_invite_results AS SELECT m.user_id AS invitee_id,r.id AS room_id,r.title AS room_title,m.invited_by AS inviter_id,m.created_at AS invited_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.accepted_at IS NULL AND r.room_type='private';
