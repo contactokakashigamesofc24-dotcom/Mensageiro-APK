@@ -126,7 +126,7 @@ def main():
  # Repeating invite must remain idempotent.
  r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors'),f're-invite failed: {r}')
  # Negative invitation cases: non-owner, unverified account, non-friend, self, and invalid address.
- for uid,room,email,label in [(MEMBER,ROOM,'outsider@example.test','non-owner'),(OWNER,'10000000-0000-0000-0000-000000000003','unverified@example.test','unverified account'),(OWNER,'10000000-0000-0000-0000-000000000003','notfriend@example.test','non-friend'),(OWNER,'10000000-0000-0000-0000-000000000003','owner@example.test','self invite'),(OWNER,'10000000-0000-0000-0000-000000000003','bad','invalid email')]:
+ for uid,room,email,label in [(MEMBER,ROOM,'outsider@example.test','non-owner'),(OWNER,'10000000-0000-0000-0000-000000000003','unverified@example.test','unverified account'),(OWNER,'10000000-0000-0000-0000-000000000003','stranger@example.test','non-friend'),(OWNER,'10000000-0000-0000-0000-000000000003','owner@example.test','self invite'),(OWNER,'10000000-0000-0000-0000-000000000003','bad','invalid email')]:
   r=req(uid,'user',invite,{'room':room,'email':email});check(bool(r.get('errors')),f'{label} invitation unexpectedly succeeded')
  # Anonymous callers cannot invoke owner invite.
  anon=post('/v1/graphql',{'query':invite,'variables':{'room':ROOM,'email':'outsider@example.test'}})[1];check(bool(anon.get('errors')),'anonymous caller unexpectedly invoked invite')
