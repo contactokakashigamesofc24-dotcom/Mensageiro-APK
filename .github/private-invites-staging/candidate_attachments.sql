@@ -1,4 +1,8 @@
 -- Synthetic-only simplified attachment candidates. Mirrors APK GraphQL names, not production SQL.
+CREATE OR REPLACE FUNCTION public.messenger_user_can_access_private_room(p_room_id uuid,p_user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
+ SELECT EXISTS(SELECT 1 FROM public.rooms r WHERE r.id=p_room_id AND r.room_type='private' AND (r.created_by=p_user_id OR EXISTS(SELECT 1 FROM public.room_members m WHERE m.room_id=r.id AND m.user_id=p_user_id AND m.accepted_at IS NOT NULL)));
+$fn$;
 CREATE OR REPLACE FUNCTION public.create_private_room_audio(p_room_id uuid,hasura_session json)
 RETURNS SETOF public.audio_create_result LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
 DECLARE v_actor uuid; v_id uuid;
