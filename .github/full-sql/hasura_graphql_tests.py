@@ -7,11 +7,14 @@ OWNER='27a5eca4-18d2-4a67-9a34-3e075317740b'
 MEMBER='40000000-0000-0000-0000-000000000002'
 
 def b64(x): return base64.urlsafe_b64encode(x).rstrip(b'=').decode()
-def jwt(uid):
+def jwt(uid,role='user'):
     head=b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode())
-    claims={'https://hasura.io/jwt/claims':{'x-hasura-allowed-roles':['user'],'x-hasura-default-role':'user','x-hasura-user-id':uid}}
+    claims={'https://hasura.io/jwt/claims':{'x-hasura-allowed-roles':[role],'x-hasura-default-role':role,'x-hasura-user-id':uid}}
     payload=b64(json.dumps(claims).encode()); msg=f'{head}.{payload}'.encode()
     return f'{head}.{payload}.{b64(hmac.new(SECRET.encode(),msg,hashlib.sha256).digest())}'
+def gql_role(uid,role,query,variables=None):
+    status,res=post('/v1/graphql',{'query':query,'variables':variables or {}},{'Authorization':'Bearer '+jwt(uid,role)})
+    return status,res
 def post(path,obj,headers=None):
     req=urllib.request.Request(URL+path,data=json.dumps(obj).encode(),headers={'Content-Type':'application/json',**(headers or {})},method='POST')
     try:
@@ -26,7 +29,21 @@ def gql(uid,query,variables=None):
     status,res=post('/v1/graphql',{'query':query,'variables':variables or {}},{'Authorization':'Bearer '+jwt(uid)})
     if status!=200 or res.get('errors'): raise AssertionError(f'GraphQL failed: {res}')
     return res.get('data') or {}
+def gql_result(uid,query,variables=None):
+    headers={} if uid is None else {'Authorization':'Bearer '+jwt(uid)}
+    return post('/v1/graphql',{'query':query,'variables':variables or {}},headers)
 
+def set_exact_app_permissions():
+    # Reproduce the exported Nhost permissions for these three tables, not broad admin access.
+    meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
+    meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'room_members'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
+    meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}})
+    meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'check':{},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
+    meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}}})
+    meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
+    meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'user','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+    # No anonymous role function permissions are created.
+    
 def main():
     meta('replace_metadata',{'version':3,'sources':[{'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}]})
     tables=psql("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").splitlines()
@@ -41,13 +58,13 @@ def main():
     tracked=[]
     for line in funcs:
         name,args=line.split('|',1)
-        if name=='messenger_user_can_access_private_room': continue
         cfg={}
         if 'hasura_session' in args: cfg={'session_argument':'hasura_session'}
         meta('pg_track_function',{'source':'default','function':{'schema':'public','name':name},'configuration':cfg})
         meta('pg_create_function_permission',{'source':'default','function':{'schema':'public','name':name},'role':'user'})
         tracked.append(name)
-    # Hasura health, identity-injected query/mutation, completed upload reads and Bot state.
+    set_exact_app_permissions()
+    # Hasura health, exact app metadata role, identity-injected query/mutation, completed upload reads and Bot state.
     prof=gql(OWNER,'query { my_messenger_profile { display_name avatar_data } }')
     assert len(prof['my_messenger_profile'])==1
     changed=gql(MEMBER,'mutation { upsert_my_profile(args:{p_display_name:"GraphQL member",p_avatar_data:null}) { user_id display_name avatar_data } }')
@@ -67,10 +84,35 @@ def main():
     assert [r['chunk_index'] for r in pages]==[1,2]
     status=gql(OWNER,'query { messenger_bot_status { enabled updated_at } }')['messenger_bot_status']
     assert len(status)==1 and status[0]['enabled'] is False
+    public_rooms=gql(OWNER,'query { rooms(where:{room_type:{_eq:"public"}}) { id title room_type created_by } }')['rooms']
+    assert public_rooms, 'authenticated user cannot read public room via app metadata'
+    public_room=public_rooms[0]['id']
+    outsider_query=gql_role('40000000-0000-0000-0000-000000000004','user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
+    assert outsider_query[0]==200 and outsider_query[1].get('data',{}).get('rooms')==[], f'outsider could see private room: {outsider_query}'
+    member_owner_query=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
+    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], 'member room listing unexpectedly exposed with current metadata'
+    outsider_insert=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"outsider attempt"}){id}}',{'room':room})
+    assert outsider_insert[1].get('errors'), f'outsider private insert unexpectedly allowed: {outsider_insert}'
+    member_private_read=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
+    assert member_private_read[0]==200 and member_private_read[1].get('data',{}).get('messages')==[], 'legacy message metadata unexpectedly exposes private room messages to accepted member'
+    member_private_insert=gql_role(MEMBER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"accepted member attempt"}){id}}',{'room':room})
+    assert member_private_insert[1].get('errors'), f'legacy metadata unexpectedly allowed accepted member private send: {member_private_insert}'
+    public_insert=gql_role(OWNER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"normal public write"}){id sender_id}}',{'room':public_room})
+    assert public_insert[0]==200 and not public_insert[1].get('errors') and public_insert[1].get('data',{}).get('insert_messages_one',{}).get('sender_id')==OWNER, f'public room normal write not preserved: {public_insert}'
+    create_room=gql_role(MEMBER,'user','mutation { insert_rooms_one(object:{title:"GraphQL public room",room_type:"public"}) { id created_by room_type } }')
+    assert create_room[0]==200 and not create_room[1].get('errors') and create_room[1].get('data',{}).get('insert_rooms_one',{}).get('created_by')==MEMBER, f'normal public room creation not preserved: {create_room}'
+    anon_query=gql_result(None,'query { rooms { id } }')
+    assert anon_query[1].get('errors'), f'unauthenticated query should be default-denied: {anon_query}'
+    anon_status=gql_result(None,'query { messenger_bot_status { enabled } }')
+    assert anon_status[1].get('errors'), f'unauthenticated Bot status unexpectedly available: {anon_status}'
+    anon_mutation=gql_result(None,'mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"anonymous"}){id}}',{'room':public_room})
+    assert anon_mutation[1].get('errors'), f'unauthenticated public write unexpectedly allowed: {anon_mutation}'
     print('PASS Hasura metadata tracking:',len(tables),'tables,',len(tracked),'functions; session argument configured where required')
-    print('PASS authenticated GraphQL profile query/upsert with injected caller identity')
-    print('PASS GraphQL accepted-room listing; completed audio read; media second-page retrieval')
-    print('PASS GraphQL owner Bot-status query reports OFF')
+    print('PASS exact app metadata: public-room read/write works; private room not exposed to outsider or accepted member by legacy policy')
+    print('PASS anonymous GraphQL query, Bot-status, and message mutation denied')
+    print('PASS authenticated profile query/upsert, attachments, pagination, Bot OFF')
+    print('NOTE existing export filters private-room access to creator only; accepted-member expansion remains a separate policy change not performed here.')
+    print('NOTE exact room/messages/room_members metadata tested; accepted-member private access remains denied by current export.')
     print('NOTE disposable PostgreSQL/Hasura and synthetic JWT only; no production Nhost/Auth/device tested')
 
 if __name__=='__main__': main()

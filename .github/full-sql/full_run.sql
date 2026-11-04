@@ -182,7 +182,6 @@ REVOKE ALL ON FUNCTION public.messenger_user_can_access_private_room(uuid,uuid),
 REVOKE ALL ON FUNCTION public.messenger_bot_status(json),public.set_messenger_bot_enabled(boolean,json) FROM PUBLIC;
 -- Hasura DB-role execution privilege; Hasura API permissions must allow the status query only to authenticated user,
 -- and the setter only to authenticated user with the UUID allowlist. Never add anonymous function permissions.
-GRANT EXECUTE ON FUNCTION public.messenger_bot_status(json),public.set_messenger_bot_enabled(boolean,json) TO PUBLIC;
 
 -- Intentionally absent: no message-acceptance pause, public-room write block, public-room creation block,
 -- deletion restriction for normal users, or Bot-worker connection. The Bot toggle only changes this table's flag.
@@ -350,7 +349,6 @@ BEGIN
 END; $fn$;
 
 REVOKE ALL ON FUNCTION public.my_messenger_profile(json), public.room_message_profiles(uuid,json), public.get_message_profile(uuid,json), public.upsert_my_profile(text,text,json), public.request_friend_by_email(text,json), public.respond_friend_request(uuid,boolean,json), public.my_messenger_friends(json), public.my_incoming_friend_requests(json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.my_messenger_profile(json), public.room_message_profiles(uuid,json), public.get_message_profile(uuid,json), public.upsert_my_profile(text,text,json), public.request_friend_by_email(text,json), public.respond_friend_request(uuid,boolean,json), public.my_messenger_friends(json), public.my_incoming_friend_requests(json) TO PUBLIC;
 -- Track all eight functions in Hasura, mark hasura_session as session argument, grant execute only to role user.
 -- Track messenger_profiles; permit authenticated user select only profile fields needed by chat, insert/update own user_id = X-Hasura-User-Id. Do not expose email.
 
@@ -497,11 +495,6 @@ REVOKE ALL ON FUNCTION public.my_pending_private_invites(json) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.my_accepted_private_rooms(json) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.owner_room_members(uuid,json) FROM PUBLIC;
 -- Hasura's role permission is the API boundary; it injects the hasura_session argument.
-GRANT EXECUTE ON FUNCTION public.invite_room_member_by_email(uuid,text,json) TO PUBLIC;
-GRANT EXECUTE ON FUNCTION public.accept_private_room_invite(uuid,json) TO PUBLIC;
-GRANT EXECUTE ON FUNCTION public.my_pending_private_invites(json) TO PUBLIC;
-GRANT EXECUTE ON FUNCTION public.my_accepted_private_rooms(json) TO PUBLIC;
-GRANT EXECUTE ON FUNCTION public.owner_room_members(uuid,json) TO PUBLIC;
 
 -- Private groups in the Mensageiro. Apply only to Nhost project fapcygtcubeukddoieus after backup.
 -- Groups use existing private rooms and accepted room_members memberships; do not grant anonymous access.
@@ -588,7 +581,6 @@ BEGIN
 END; $fn$;
 
 REVOKE ALL ON FUNCTION public.create_private_messenger_group(text,uuid[],json),public.my_messenger_groups(json),public.my_pending_group_invites(json),public.accept_messenger_group_invite(uuid,json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_private_messenger_group(text,uuid[],json),public.my_messenger_groups(json),public.my_pending_group_invites(json),public.accept_messenger_group_invite(uuid,json) TO PUBLIC;
 -- Track four functions in Hasura. Mark each hasura_session parameter as injected session argument.
 -- Grant execution only to authenticated `user`; deny anonymous. Keep messenger_groups table untracked/default-deny.
 -- Hasura default permissions must deny direct INSERT into public.rooms with room_type='private' and deny UPDATE/DELETE on those rooms; only group/owner-approved functions may create them. Configure private room/message SELECT and message INSERT predicates to require owner OR room_members row for session user with accepted_at IS NOT NULL. Restrict room_type to public/private and preset created_by/sender_id from session. Do not grant public-room permissions to private rooms.
@@ -656,7 +648,6 @@ BEGIN
 END; $fn$;
 
 REVOKE ALL ON FUNCTION public.set_my_presence(boolean,json),public.my_presence_state(json),public.my_friends_presence(json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.set_my_presence(boolean,json),public.my_presence_state(json),public.my_friends_presence(json) TO PUBLIC;
 -- Track messenger_presence and all three functions in Hasura; mark hasura_session as session argument.
 -- Grant function execute to authenticated role user only. No direct table access or anonymous execute.
 -- No tracking of public profile or room membership outside these functions.
@@ -766,7 +757,6 @@ BEGIN
 END; $fn$;
 
 REVOKE ALL ON FUNCTION public.create_private_room_audio(uuid,json),public.add_private_room_audio_chunk(uuid,integer,text,json),public.complete_private_room_audio(uuid,integer,json),public.private_room_audio_message_ids(uuid,json),public.get_private_room_audio_chunks(uuid,integer,integer,json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_private_room_audio(uuid,json),public.add_private_room_audio_chunk(uuid,integer,text,json),public.complete_private_room_audio(uuid,integer,json),public.private_room_audio_message_ids(uuid,json),public.get_private_room_audio_chunks(uuid,integer,integer,json) TO PUBLIC;
 -- Track functions in Hasura, mark hasura_session as injected session argument. Grant execute only to authenticated role `user`.
 -- This attachment feature is private-room only; it does not change normal public-room message read/write behavior.
 -- Do not grant anonymous access or direct CRUD on either audio table. The app never sees any admin secret.
@@ -890,7 +880,6 @@ BEGIN
 END; $fn$;
 
 REVOKE ALL ON FUNCTION public.create_private_room_media(uuid,text,json),public.add_private_room_media_chunk(uuid,integer,text,text,json),public.complete_private_room_media(uuid,integer,json),public.private_room_media_message_ids(uuid,json),public.private_room_media_info(uuid,json),public.get_private_room_media_chunks(uuid,integer,integer,json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_private_room_media(uuid,text,json),public.add_private_room_media_chunk(uuid,integer,text,text,json),public.complete_private_room_media(uuid,integer,json),public.private_room_media_message_ids(uuid,json),public.private_room_media_info(uuid,json),public.get_private_room_media_chunks(uuid,integer,integer,json) TO PUBLIC;
 -- Track functions in Hasura, mark hasura_session as injected, grant execute only to authenticated `user` role. No direct CRUD on media tables.
 -- Requires messenger_user_can_access_private_room helper; does not alter normal public-room read/write behavior.
 
@@ -925,15 +914,18 @@ DECLARE
  owner_id uuid := '27a5eca4-18d2-4a67-9a34-3e075317740b';
  member_id uuid := '40000000-0000-0000-0000-000000000002';
  pending_id uuid := '40000000-0000-0000-0000-000000000003';
- rid uuid; gid uuid; audio_id uuid; media_id uuid; n integer; grp record;
+ rid uuid; gid uuid; audio_id uuid; media_id uuid; public_rid uuid; outsider_rid uuid; n integer; grp record;
  session_owner json := '{"x-hasura-role":"user","x-hasura-user-id":"27a5eca4-18d2-4a67-9a34-3e075317740b"}';
  session_member json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000002"}';
  session_pending json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000003"}';
 BEGIN
+ IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('messenger_bot_status','set_messenger_bot_enabled','my_messenger_profile','room_message_profiles','get_message_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','invite_room_member_by_email','accept_private_room_invite','my_accepted_private_rooms','owner_room_members','my_pending_private_invites','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','set_my_presence','my_presence_state','my_friends_presence','create_private_room_audio','add_private_room_audio_chunk','complete_private_room_audio','private_room_audio_message_ids','get_private_room_audio_chunks','create_private_room_media','add_private_room_media_chunk','complete_private_room_media','private_room_media_message_ids','private_room_media_info','get_private_room_media_chunks') AND EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')) THEN RAISE EXCEPTION 'Application SQL functions remain executable by PostgreSQL PUBLIC'; END IF;
  INSERT INTO public.messenger_profiles(user_id,display_name) SELECT id,'Test user' FROM auth.users ON CONFLICT(user_id) DO NOTHING;
  INSERT INTO public.messenger_friend_requests(requester_id,recipient_id,status) VALUES(owner_id,member_id,'accepted'),(owner_id,pending_id,'accepted') ON CONFLICT(requester_id,recipient_id) DO UPDATE SET status='accepted';
  PERFORM set_config('hasura.user',session_owner::text,true);
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL private test','private',owner_id) RETURNING id INTO rid;
+ INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL public test','public',owner_id) RETURNING id INTO public_rid;
+ INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL outsider private','private','40000000-0000-0000-0000-000000000004') RETURNING id INTO outsider_rid;
  INSERT INTO public.room_members(room_id,user_id,invited_by,accepted_at) VALUES(rid,owner_id,owner_id,now());
  IF NOT public.messenger_user_can_access_private_room(rid,owner_id) THEN RAISE EXCEPTION 'owner authorization failed'; END IF;
  IF public.messenger_user_can_access_private_room(rid,member_id) THEN RAISE EXCEPTION 'unaccepted user authorized'; END IF;
