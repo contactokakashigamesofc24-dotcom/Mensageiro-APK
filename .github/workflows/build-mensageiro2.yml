@@ -29,7 +29,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v2.2.8-leitura-permissoes app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title 'Mensageiro — etapa 3: inspeção somente leitura' \
-            --notes 'Etapa 3: adiciona inspeção GraphQL somente de leitura para verificar se a conta user expõe mutação de inserção. Não lê linhas nem grava dados; Worker sem autorização de publicação. Respostas automáticas continuam desligadas.' \
+          TAG="v2.2.9-configuracoes-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
+            --title "Mensageiro — configurações locais (${GITHUB_RUN_NUMBER})" \
+            --notes 'Configurações locais: sair da conta neste aparelho, ajuste de tamanho do texto, atalho às permissões de notificação do Android e limpeza confirmada de arquivos temporários. Não inclui push de mensagens, integração funcional do Bot, nem alterações no backend. APK debug compilado pelo GitHub Actions; testar antes de uso.' \
             --prerelease
