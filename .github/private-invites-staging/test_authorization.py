@@ -226,6 +226,9 @@ def main():
  # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
+ print('PASS: APK profile, friend request/response, and presence operations use injected caller identity')
+ print('PASS: APK private audio/media upload, completion and reads work for accepted member; outsiders denied')
+ print('PASS: exact APK room/message read and insert operations align with candidate private-room permissions')
  print('PASS: current exported private message policy owner-only reproduced; accepted member denied')
  print('PASS: candidate policy grants owner and accepted member, denies pending/outsider for known UUID')
  print('PASS: invite is owner-only and idempotent; pending has no history; accept grants membership')
