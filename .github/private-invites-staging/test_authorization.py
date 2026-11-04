@@ -70,7 +70,8 @@ def main():
  r=req(OWNER,'user',mine);profiles=(r.get('data') or {}).get('my_messenger_profile') or [];check(len(profiles)==1,'my_messenger_profile did not return caller profile')
  save='mutation($name:String!,$avatar:String){upsert_my_profile(args:{p_display_name:$name,p_avatar_data:$avatar}){user_id display_name avatar_data}}'
  r=req(OWNER,'user',save,{'name':'Updated Owner','avatar':None});rows=(r.get('data') or {}).get('upsert_my_profile') or [];check(len(rows)==1 and rows[0]['user_id']==OWNER and rows[0]['display_name']=='Updated Owner',f'profile upsert failed: {r}')
- r=req(OUTSIDER,'user',save,{'name':'Spoof Owner','avatar':None});check(bool(r.get('errors')),'profile upsert unexpectedly spoofed another session')
+ r=req(OUTSIDER,'user',save,{'name':'Updated Outsider','avatar':None});rows=(r.get('data') or {}).get('upsert_my_profile') or [];check(len(rows)==1 and rows[0]['user_id']==OUTSIDER,'profile upsert did not bind update to caller session')
+ r=req(OWNER,'user',mine);profiles=(r.get('data') or {}).get('my_messenger_profile') or [];check(profiles[0]['display_name']=='Updated Owner','other user changed owner profile')
  friendreq='mutation($email:String!){request_friend_by_email(args:{p_email:$email}){request_id}}'
  r=req(OWNER,'user',friendreq,{'email':'notfriend@example.test'});requests=(r.get('data') or {}).get('request_friend_by_email') or [];check(len(requests)==1,'friend request failed');request_id=requests[0]['request_id']
  incoming='query { my_incoming_friend_requests { request_id user_id display_name avatar_data } }'
