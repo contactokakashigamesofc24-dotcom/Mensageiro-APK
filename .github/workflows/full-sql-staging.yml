@@ -18,18 +18,18 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Start disposable PostgreSQL
+      - name: Start disposable PostgreSQL and Hasura
         run: |
           set -e
           docker network create full-sql-net
           docker run -d --name full-sql-db --network full-sql-net -e POSTGRES_PASSWORD=test-only -e POSTGRES_DB=messenger_test postgres:16
           for i in $(seq 1 30); do docker exec full-sql-db pg_isready -U postgres -d messenger_test && break; sleep 2; done
           docker exec full-sql-db pg_isready -U postgres -d messenger_test
-          docker run -d --name full-sql-hasura --network full-sql-net -p 8080:8080 \\
-            -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \\
-            -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \\
-            -e HASURA_GRAPHQL_ADMIN_SECRET=ephemeral-full-sql-admin \\
-            -e HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"ephemeral-full-sql-test-only-secret","claims_namespace":"https://hasura.io/jwt/claims"}' \\
+          docker run -d --name full-sql-hasura --network full-sql-net -p 8080:8080 \
+            -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \
+            -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \
+            -e HASURA_GRAPHQL_ADMIN_SECRET=ephemeral-full-sql-admin \
+            -e HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"ephemeral-full-sql-test-only-secret","claims_namespace":"https://hasura.io/jwt/claims"}' \
             -e HASURA_GRAPHQL_ENABLE_CONSOLE=false hasura/graphql-engine:v2.44.0
           for i in $(seq 1 60); do curl --fail --silent http://localhost:8080/healthz && break; sleep 2; done
           curl --fail --silent http://localhost:8080/healthz
