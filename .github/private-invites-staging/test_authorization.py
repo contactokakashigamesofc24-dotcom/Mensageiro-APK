@@ -20,7 +20,7 @@ def check(ok,msg):
 def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
- for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result','friend_request_result','friend_profile_result','incoming_friend_result','presence_result','friend_presence_result','messenger_presence','audio_create_result','audio_chunk_result','audio_complete_result','audio_id_result','media_create_result','media_chunk_result','media_complete_result','media_id_result','media_info_result','room_wallpapers','private_wallpaper_result']:
+ for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result','friend_request_result','friend_profile_result','incoming_friend_result','presence_result','friend_presence_result','message_profile_result','room_message_profile_result','messenger_presence','audio_create_result','audio_chunk_result','audio_complete_result','audio_id_result','media_create_result','media_chunk_result','media_complete_result','media_id_result','media_info_result','room_wallpapers','private_wallpaper_result']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'room_wallpapers'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
@@ -41,7 +41,7 @@ def main():
  # Delete candidate is narrowly bound to session sender and room access; the APK also supplies room/message IDs.
  meta('pg_create_delete_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'filter':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]}}})
  # These function permissions are applied only to the isolated Hasura instance.
- for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','my_messenger_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','set_my_presence','my_friends_presence','create_private_room_audio','add_private_room_audio_chunk','complete_private_room_audio','private_room_audio_message_ids','get_private_room_audio_chunks','create_private_room_media','add_private_room_media_chunk','complete_private_room_media','private_room_media_message_ids','private_room_media_info','get_private_room_media_chunks']:
+ for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','my_messenger_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','set_my_presence','my_friends_presence','get_message_profile','room_message_profiles','create_private_room_audio','add_private_room_audio_chunk','complete_private_room_audio','private_room_audio_message_ids','get_private_room_audio_chunks','create_private_room_media','add_private_room_media_chunk','complete_private_room_media','private_room_media_message_ids','private_room_media_info','get_private_room_media_chunks']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
   meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name','avatar_data'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
@@ -51,6 +51,8 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'friend_profile_result'},'role':'user','permission':{'columns':['viewer_id','user_id','display_name','avatar_data'],'filter':{'viewer_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'incoming_friend_result'},'role':'user','permission':{'columns':['viewer_id','request_id','user_id','display_name','avatar_data'],'filter':{'viewer_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'presence_result'},'role':'user','permission':{'columns':['user_id','last_seen'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'message_profile_result'},'role':'user','permission':{'columns':['display_name','avatar_data'],'filter':{}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_message_profile_result'},'role':'user','permission':{'columns':['sender_id','display_name','avatar_data'],'filter':{}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'friend_presence_result'},'role':'user','permission':{'columns':['user_id','is_online','last_seen'],'filter':{}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'audio_create_result'},'role':'user','permission':{'columns':['message_id'],'filter':{}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'audio_chunk_result'},'role':'user','permission':{'columns':['message_id','chunk_index','audio_data'],'filter':{}}})
@@ -200,6 +202,13 @@ def main():
  r=req(MEMBER,'user',accept_group,{'room':group_id});check(bool(r.get('errors')),'non-invitee accepted group invitation')
  r=req(OUTSIDER,'user',accept_group,{'room':group_id});check(not r.get('errors') and len((r.get('data') or {}).get('accept_messenger_group_invite') or [])==1,f'invitee could not accept group: {r}')
  r=req(OUTSIDER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'accepted group member not listed')
+ # Exact APK profile lookups: own profile, profile sender from authorized room, and no unrelated private profile leakage.
+ getprofile='query($id:uuid!){get_message_profile(args:{p_user_id:$id}){display_name avatar_data}}'
+ r=req(OWNER,'user',getprofile,{'id':MEMBER});check(len((r.get('data') or {}).get('get_message_profile') or [])==1,f'friend message profile lookup failed: {r}')
+ r=req(OUTSIDER,'user',getprofile,{'id':MEMBER});check(bool(r.get('errors')) or not (r.get('data') or {}).get('get_message_profile'),'outsider accessed private-only profile')
+ roomprofiles='query($roomId:uuid!){room_message_profiles(args:{p_room_id:$roomId}){sender_id display_name avatar_data}}'
+ r=req(MEMBER,'user',roomprofiles,{'roomId':ROOM});profiles=(r.get('data') or {}).get('room_message_profiles') or [];check(any(x['sender_id']==OWNER for x in profiles) and any(x['sender_id']==MEMBER for x in profiles),'accepted member did not receive sender profiles')
+ r=req(OUTSIDER,'user',roomprofiles,{'roomId':ROOM});check(bool(r.get('errors')) or not (r.get('data') or {}).get('room_message_profiles'),'outsider read private room sender profiles')
  # Exact APK audio upload/query/download operations: accepted member can finish/read; outsiders cannot start/read.
  audio_create='mutation($room:uuid!){create_private_room_audio(args:{p_room_id:$room}){message_id}}'
  r=req(MEMBER,'user',audio_create,{'room':ROOM});audio_rows=(r.get('data') or {}).get('create_private_room_audio') or [];check(len(audio_rows)==1,f'accepted member could not start audio: {r}');audio_id=audio_rows[0]['message_id']
@@ -257,7 +266,7 @@ def main():
  # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
- print('PASS: APK profile, friend request/response, and presence operations use injected caller identity')
+ print('PASS: APK profile, friend request/response, presence and room-scoped profile lookup operations use caller identity')
  print('PASS: APK private audio/media upload, completion and reads work for accepted member; outsiders denied')
  print('PASS: APK delete mutation removes only caller-owned message in authorized room; pending/outsider/forged selectors affect zero rows')
  print('PASS: exact APK room/message read and insert operations align with candidate private-room permissions')
