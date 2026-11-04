@@ -60,7 +60,7 @@ def main():
   if '$roomId' in query and 'id' in variables and 'roomId' not in variables:variables={**variables,'roomId':variables['id']}
   return post('/v1/graphql',{'query':query,'variables':variables},{'Authorization':'Bearer '+jwt(role,uid)})[1]
  # Compare current exported policy: owner sees own private room/messages, other users do not.
- old_owner=req(OWNER,'user',q,{'id':ROOM});check(len((old_owner.get('data') or {}).get('messages') or [])>=1,'old policy owner lost access')
+ old_owner=req(OWNER,'user',q,{'id':ROOM});check(len((old_owner.get('data') or {}).get('messages') or [])>=1,f'old policy owner lost access: {old_owner}')
  for uid in [MEMBER,PENDING,OUTSIDER]:
   r=req(uid,'user',q,{'id':ROOM});check(not r.get('errors') and len((r.get('data') or {}).get('messages') or [])==0,f'old exported filter unexpectedly grants private access {uid}: {r}')
  # Candidate policy should give owner + accepted member access, but deny pending invitee and outsider despite UUID known.
