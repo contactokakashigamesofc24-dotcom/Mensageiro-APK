@@ -918,7 +918,6 @@ DECLARE
  session_owner json := '{"x-hasura-role":"user","x-hasura-user-id":"27a5eca4-18d2-4a67-9a34-3e075317740b"}';
  session_member json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000002"}';
  session_pending json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000003"}';
- session_outsider json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000004"}';
 BEGIN
  IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('messenger_bot_status','set_messenger_bot_enabled','my_messenger_profile','room_message_profiles','get_message_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','invite_room_member_by_email','accept_private_room_invite','my_accepted_private_rooms','owner_room_members','my_pending_private_invites','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','set_my_presence','my_presence_state','my_friends_presence','create_private_room_audio','add_private_room_audio_chunk','complete_private_room_audio','private_room_audio_message_ids','get_private_room_audio_chunks','create_private_room_media','add_private_room_media_chunk','complete_private_room_media','private_room_media_message_ids','private_room_media_info','get_private_room_media_chunks') AND EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')) THEN RAISE EXCEPTION 'Application SQL functions remain executable by PostgreSQL PUBLIC'; END IF;
  INSERT INTO public.messenger_profiles(user_id,display_name) SELECT id,'Test user' FROM auth.users ON CONFLICT(user_id) DO NOTHING;
@@ -926,9 +925,7 @@ BEGIN
  PERFORM set_config('hasura.user',session_owner::text,true);
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL private test','private',owner_id) RETURNING id INTO rid;
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL public test','public',owner_id) RETURNING id INTO public_rid;
- PERFORM set_config('hasura.user',session_outsider::text,true);
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL outsider private','private','40000000-0000-0000-0000-000000000004') RETURNING id INTO outsider_rid;
- PERFORM set_config('hasura.user',session_owner::text,true);
  INSERT INTO public.room_members(room_id,user_id,invited_by,accepted_at) VALUES(rid,owner_id,owner_id,now());
  IF NOT public.messenger_user_can_access_private_room(rid,owner_id) THEN RAISE EXCEPTION 'owner authorization failed'; END IF;
  IF public.messenger_user_can_access_private_room(rid,member_id) THEN RAISE EXCEPTION 'unaccepted user authorized'; END IF;
@@ -936,6 +933,7 @@ BEGIN
  PERFORM * FROM public.invite_room_member_by_email(rid,'member@example.test',session_owner);
  SELECT count(*) INTO n FROM public.room_members WHERE room_id=rid AND user_id=member_id AND accepted_at IS NULL;
  IF n<>1 THEN RAISE EXCEPTION 'invite idempotency failed'; END IF;
+ INSERT INTO public.messages(room_id,sender_id,body) VALUES(rid,owner_id,'seed private message for permission policy test');
  PERFORM set_config('hasura.user',session_member::text,true);
  PERFORM * FROM public.accept_private_room_invite(rid,session_member);
  IF NOT public.messenger_user_can_access_private_room(rid,member_id) THEN RAISE EXCEPTION 'accepted membership not authorized'; END IF;

@@ -90,7 +90,26 @@ def main():
     outsider_query=gql_role('40000000-0000-0000-0000-000000000004','user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
     assert outsider_query[0]==200 and outsider_query[1].get('data',{}).get('rooms')==[], f'outsider could see private room: {outsider_query}'
     member_owner_query=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
-    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], 'member room listing unexpectedly exposed with current metadata'
+    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], 'current legacy metadata unexpectedly exposes accepted private room'
+    # Try the candidate accepted-member policy only in disposable Hasura metadata.
+    meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
+    meta('pg_drop_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user'})
+    meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}})
+    meta('pg_drop_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user'})
+    meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}}})
+    meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
+    candidate_rooms=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
+    assert candidate_rooms[0]==200 and candidate_rooms[1].get('data',{}).get('rooms')==[{'id':room}], f'candidate accepted private room read failed: {candidate_rooms}'
+    candidate_msgs=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id body}}',{'room':room})
+    assert candidate_msgs[0]==200 and len(candidate_msgs[1].get('data',{}).get('messages',[]))==1, f'candidate accepted private history read failed: {candidate_msgs}'
+    denied_msgs=gql_role('40000000-0000-0000-0000-000000000004','user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
+    assert denied_msgs[0]==200 and denied_msgs[1].get('data',{}).get('messages')==[], 'candidate leaked private history to outsider'
+    member_write=gql_role(MEMBER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"accepted private member write"}){id sender_id}}',{'room':room})
+    assert member_write[0]==200 and not member_write[1].get('errors') and member_write[1].get('data',{}).get('insert_messages_one',{}).get('sender_id')==MEMBER, f'candidate accepted member write failed: {member_write}'
+    outsider_write=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"outsider private write"}){id}}',{'room':room})
+    assert outsider_write[1].get('errors'), f'candidate allowed outsider private write: {outsider_write}'
+    pending_invite_write=gql_role('40000000-0000-0000-0000-000000000003','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"pending private write"}){id}}',{'room':room})
+    assert pending_invite_write[1].get('errors'), f'candidate allowed pending invite private write: {pending_invite_write}'
     outsider_insert=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"outsider attempt"}){id}}',{'room':room})
     assert outsider_insert[1].get('errors'), f'outsider private insert unexpectedly allowed: {outsider_insert}'
     member_private_read=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
@@ -108,11 +127,11 @@ def main():
     anon_mutation=gql_result(None,'mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"anonymous"}){id}}',{'room':public_room})
     assert anon_mutation[1].get('errors'), f'unauthenticated public write unexpectedly allowed: {anon_mutation}'
     print('PASS Hasura metadata tracking:',len(tables),'tables,',len(tracked),'functions; session argument configured where required')
-    print('PASS exact app metadata: public-room read/write works; private room not exposed to outsider or accepted member by legacy policy')
+    print('PASS exact app metadata: public-room read/write works; outsider denied; candidate metadata grants accepted private member access only')
     print('PASS anonymous GraphQL query, Bot-status, and message mutation denied')
     print('PASS authenticated profile query/upsert, attachments, pagination, Bot OFF')
-    print('NOTE existing export filters private-room access to creator only; accepted-member expansion remains a separate policy change not performed here.')
-    print('NOTE exact room/messages/room_members metadata tested; accepted-member private access remains denied by current export.')
+    print('NOTE current export first denied accepted members; candidate private-room metadata was tested only in disposable Hasura and is not applied to Nhost.')
+    print('NOTE candidate relationship/filter behavior is a test result, not a production migration.')
     print('NOTE disposable PostgreSQL/Hasura and synthetic JWT only; no production Nhost/Auth/device tested')
 
 if __name__=='__main__': main()
