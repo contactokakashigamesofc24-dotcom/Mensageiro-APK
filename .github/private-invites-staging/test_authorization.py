@@ -66,6 +66,18 @@ def main():
  r=req(OWNER,'user',invite,{'room':ROOM,'email':'accepted@example.test'});check(not r.get('errors'),f're-invite accepted member failed: {r}')
  memq='query($room:uuid!){room_members(where:{room_id:{_eq:$room}}){room_id user_id accepted_at}}'
  r=req(MEMBER,'user',memq,{'room':ROOM});members=(r.get('data') or {}).get('room_members') or [];check(len(members)==1 and members[0]['accepted_at'] is not None,'re-invite reset accepted membership or duplicated it')
+ # The list functions are Hasura-trackable SETOF views and must scope rows to injected session claims.
+ acceptedq='query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }'
+ r=req(MEMBER,'user',acceptedq);rows=(r.get('data') or {}).get('my_accepted_private_rooms') or [];check(any(x['room_id']==ROOM for x in rows),'accepted member room list missing their room')
+ r=req(OUTSIDER,'user',acceptedq);rows=(r.get('data') or {}).get('my_accepted_private_rooms') or [];check(not rows,'outsider saw accepted private rooms')
+ pendingq='query { my_pending_private_invites { room_id room_title inviter_id invited_at } }'
+ r=req(OUTSIDER,'user',pendingq);rows=(r.get('data') or {}).get('my_pending_private_invites') or [];check(not rows,'outsider saw another user pending invitation')
+ # Hasura must keep injected session argument out of caller-supplied GraphQL args.
+ forged_session='query { my_accepted_private_rooms(hasura_session:{"x-hasura-role":"user","x-hasura-user-id":"'+OWNER+'"}) { room_id } }'
+ r=req(OUTSIDER,'user',forged_session);check(bool(r.get('errors')),'caller supplied the injected Hasura session argument')
+ membersq='query($room:uuid!){owner_room_members(args:{p_room_id:$room}){user_id accepted_at}}'
+ r=req(OWNER,'user',membersq,{'room':ROOM});rows=(r.get('data') or {}).get('owner_room_members') or [];check(len(rows)==2,'owner roster did not return expected synthetic members')
+ r=req(OUTSIDER,'user',membersq,{'room':ROOM});check(bool(r.get('errors')),'outsider accessed owner roster')
  # Exercise the invite function against the second synthetic private room using its session_argument.
  invite='mutation($room:uuid!,$email:String!){invite_room_member_by_email(args:{p_room_id:$room,p_email:$email}){id}}'
  r=req(OWNER,'user',invite,{'room':'10000000-0000-0000-0000-000000000003','email':'pending@example.test'});check(not r.get('errors') and len((r.get('data') or {}).get('invite_room_member_by_email') or [])==1,f'owner invite failed: {r}')
