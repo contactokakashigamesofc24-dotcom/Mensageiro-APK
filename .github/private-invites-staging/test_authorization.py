@@ -182,13 +182,13 @@ def main():
   r=req(uid,'user',sendq,{'room':ROOM,'body':'denied function message'});check(bool(r.get('errors')),f'{label} sent private function message')
  r=req(OWNER,'user',sendq,{'room':PUBLIC,'body':'public not allowed via private function'});check(bool(r.get('errors')),'private-message function accepted a public room')
  r=req(OWNER,'user',sendq,{'room':ROOM,'body':'   '});check(bool(r.get('errors')),'empty message body accepted')
- # Confirm the APK's current [uuid!]! list variable is rejected for the SQL uuid[] argument; corrected scalar literal below is test-only.
- apk_group_mut='mutation($title:String!,$members:[uuid!]!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
- r=req(OWNER,'user',apk_group_mut,{'title':'APK group shape','members':[OUTSIDER]});check(bool(r.get('errors')),'unexpected compatibility: APK list input was accepted by uuid[] argument')
- # Test group functions against the GraphQL names, argument names, and response fields used by the APK.
+ # Reproduce the corrected APK call exactly: Hasura exposes PostgreSQL uuid[] as _uuid scalar.
  group_mut='mutation($title:String!,$members:_uuid!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
- # Hasura exposes PostgreSQL uuid[] as scalar _uuid. Pass the PostgreSQL array literal; the APK's JSON list/[uuid!]! shape is not compatible.
- r=req(OWNER,'user',group_mut,{'title':'Synthetic group','members':'{'+OUTSIDER+'}'});rows=(r.get('data') or {}).get('create_private_messenger_group') or [];check(len(rows)==1 and rows[0]['group_title']=='Synthetic group',f'group create operation failed: {r}');group_id=rows[0]['room_id']
+ apk_members='{' + OUTSIDER + '}'
+ r=req(OWNER,'user',group_mut,{'title':'APK group shape corrected','members':apk_members});rows=(r.get('data') or {}).get('create_private_messenger_group') or [];check(len(rows)==1 and rows[0]['group_title']=='APK group shape corrected',f'corrected APK group create failed: {r}');group_id=rows[0]['room_id']
+ # Confirm GraphQL list input remains incompatible, so the Android change is necessary rather than cosmetic.
+ incompatible_mut='mutation($title:String!,$members:[uuid!]!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
+ r=req(OWNER,'user',incompatible_mut,{'title':'Old APK shape','members':[OUTSIDER]});check(bool(r.get('errors')),'old [uuid!] APK input unexpectedly accepted')
  group_list='query { my_messenger_groups { room_id group_title owner_id } }'
  r=req(OWNER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'owner group listing missing')
  pending_group='query { my_pending_group_invites { room_id group_title inviter_id invited_at } }'
