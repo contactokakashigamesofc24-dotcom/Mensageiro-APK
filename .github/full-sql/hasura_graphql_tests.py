@@ -89,6 +89,13 @@ def main():
     public_room=public_rooms[0]['id']
     outsider_query=gql_role('40000000-0000-0000-0000-000000000004','user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
     assert outsider_query[0]==200 and outsider_query[1].get('data',{}).get('rooms')==[], f'outsider could see private room: {outsider_query}'
+    other_owner_room=gql_role('40000000-0000-0000-0000-000000000004','user','mutation { insert_rooms_one(object:{title:"Outsider-owned private room",room_type:"private"}) { id created_by } }')
+    assert other_owner_room[0]==200 and not other_owner_room[1].get('errors'), f'failed to create other-owned private fixture: {other_owner_room}'
+    outsider_private_room=other_owner_room[1]['data']['insert_rooms_one']['id']
+    outsider_room_query=gql_role('27a5eca4-18d2-4a67-9a34-3e075317740b','user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':outsider_private_room})
+    assert outsider_room_query[0]==200 and outsider_room_query[1].get('data',{}).get('rooms')==[], f'outsider private room readable by non-owner: {outsider_room_query}'
+    outsider_seed=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"private seed"}){id}}',{'room':outsider_private_room})
+    assert outsider_seed[0]==200 and not outsider_seed[1].get('errors'), f'failed to seed other-owned private message: {outsider_seed}'
     member_owner_query=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
     assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], 'current legacy metadata unexpectedly exposes accepted private room'
     # Try the candidate accepted-member policy only in disposable Hasura metadata.

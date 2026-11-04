@@ -914,7 +914,7 @@ DECLARE
  owner_id uuid := '27a5eca4-18d2-4a67-9a34-3e075317740b';
  member_id uuid := '40000000-0000-0000-0000-000000000002';
  pending_id uuid := '40000000-0000-0000-0000-000000000003';
- rid uuid; gid uuid; audio_id uuid; media_id uuid; public_rid uuid; outsider_rid uuid; n integer; grp record;
+ rid uuid; gid uuid; audio_id uuid; media_id uuid; public_rid uuid; n integer; grp record;
  session_owner json := '{"x-hasura-role":"user","x-hasura-user-id":"27a5eca4-18d2-4a67-9a34-3e075317740b"}';
  session_member json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000002"}';
  session_pending json := '{"x-hasura-role":"user","x-hasura-user-id":"40000000-0000-0000-0000-000000000003"}';
@@ -925,7 +925,6 @@ BEGIN
  PERFORM set_config('hasura.user',session_owner::text,true);
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL private test','private',owner_id) RETURNING id INTO rid;
  INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL public test','public',owner_id) RETURNING id INTO public_rid;
- INSERT INTO public.rooms(title,room_type,created_by) VALUES('Full SQL outsider private','private','40000000-0000-0000-0000-000000000004') RETURNING id INTO outsider_rid;
  INSERT INTO public.room_members(room_id,user_id,invited_by,accepted_at) VALUES(rid,owner_id,owner_id,now());
  IF NOT public.messenger_user_can_access_private_room(rid,owner_id) THEN RAISE EXCEPTION 'owner authorization failed'; END IF;
  IF public.messenger_user_can_access_private_room(rid,member_id) THEN RAISE EXCEPTION 'unaccepted user authorized'; END IF;
