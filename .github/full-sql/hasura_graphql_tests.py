@@ -111,10 +111,12 @@ def main():
     meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}}})
     meta('pg_drop_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user'})
     meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
-    candidate_rooms=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
-    assert candidate_rooms[0]==200 and candidate_rooms[1].get('data',{}).get('rooms')==[{'id':room}], f'candidate accepted private room read failed: {candidate_rooms}'
-    candidate_msgs=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id body}}',{'room':room})
-    assert candidate_msgs[0]==200 and any(m.get('body')=='seed private message for permission policy test' for m in candidate_msgs[1].get('data',{}).get('messages',[])), f'candidate accepted private history read failed: {candidate_msgs}'
+    candidate_rooms=gql_role(MEMBER,'user','query { rooms(order_by:{created_at:desc}) { id title room_type created_by } }')
+    assert candidate_rooms[0]==200 and any(r['id']==room for r in candidate_rooms[1].get('data',{}).get('rooms',[])), f'APK room list query failed for accepted member: {candidate_rooms}'
+    candidate_msgs=gql_role(MEMBER,'user','query($roomId:uuid!){messages(where:{room_id:{_eq:$roomId}},order_by:{created_at:asc},limit:200){id room_id sender_id body created_at}}',{'roomId':room})
+    assert candidate_msgs[0]==200 and any(m.get('body')=='seed private message for permission policy test' for m in candidate_msgs[1].get('data',{}).get('messages',[])), f'APK message history query failed for accepted member: {candidate_msgs}'
+    candidate_msgs_minimal=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
+    assert candidate_msgs_minimal[0]==200 and candidate_msgs_minimal[1].get('data',{}).get('messages'), f'candidate accepted private message read failed: {candidate_msgs_minimal}'
     denied_msgs=gql_role('40000000-0000-0000-0000-000000000004','user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
     assert denied_msgs[0]==200 and denied_msgs[1].get('data',{}).get('messages')==[], 'candidate leaked private history to outsider'
     member_write=gql_role(MEMBER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"accepted private member write"}){id sender_id}}',{'room':room})
