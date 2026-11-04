@@ -195,7 +195,7 @@ def main():
  r=req(OUTSIDER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'accepted group member not listed')
  # Exact APK audio upload/query/download operations: accepted member can finish/read; outsiders cannot start/read.
  audio_create='mutation($room:uuid!){create_private_room_audio(args:{p_room_id:$room}){message_id}}'
- r=req(MEMBER,'user',audio_create,{'room':ROOM});audio_rows=(r.get('data') or {}).get('create_private_room_audio') or [];check(len(audio_rows)==1,'accepted member could not start audio');audio_id=audio_rows[0]['message_id']
+ r=req(MEMBER,'user',audio_create,{'room':ROOM});audio_rows=(r.get('data') or {}).get('create_private_room_audio') or [];check(len(audio_rows)==1,f'accepted member could not start audio: {r}');audio_id=audio_rows[0]['message_id']
  audio_part='data:audio/mp4;base64,QUJD'
  audio_add='mutation($id:uuid!,$index:Int!,$audio:String!){add_private_room_audio_chunk(args:{p_message_id:$id,p_chunk_index:$index,p_audio_data:$audio}){chunk_index}}'
  r=req(MEMBER,'user',audio_add,{'id':audio_id,'index':0,'audio':audio_part});check(not r.get('errors'),f'audio chunk add failed: {r}')
