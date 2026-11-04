@@ -20,9 +20,11 @@ def check(ok,msg):
 def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
- for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result','friend_request_result','friend_profile_result','incoming_friend_result','presence_result','friend_presence_result','messenger_presence','audio_create_result','audio_chunk_result','audio_complete_result','audio_id_result','media_create_result','media_chunk_result','media_complete_result','media_id_result','media_info_result']:
+ for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result','friend_request_result','friend_profile_result','incoming_friend_result','presence_result','friend_presence_result','messenger_presence','audio_create_result','audio_chunk_result','audio_complete_result','audio_id_result','media_create_result','media_chunk_result','media_complete_result','media_id_result','media_info_result','room_wallpapers','private_wallpaper_result']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
+ meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'room_wallpapers'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
+ meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'wallpaper','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_wallpapers'},'column':'room_id'}}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'private_room_results'},'name':'room_members','using':{'manual_configuration':{'remote_table':{'schema':'public','name':'room_members'},'column_mapping':{'id':'room_id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}})
@@ -63,6 +65,10 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_owner_member_results'},'role':'user','permission':{'columns':['owner_id','room_id','user_id','invited_by','accepted_at','invited_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_room_results'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'created_by':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_room_results'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_wallpapers'},'role':'private_user_test','permission':{'columns':['room_id','wallpaper_data','updated_by','updated_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_wallpaper_result'},'role':'user','permission':{'columns':['room_id','wallpaper_data','updated_by','updated_at'],'filter':{'updated_by':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'room_wallpapers'},'role':'private_user_test','permission':{'check':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}},'set':{'updated_by':'X-Hasura-User-Id'},'columns':['room_id','wallpaper_data']}})
+ meta('pg_create_update_permission',{'source':'default','table':{'schema':'public','name':'room_wallpapers'},'role':'private_user_test','permission':{'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}},'check':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}},'columns':['wallpaper_data']}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_result'},'role':'user','permission':{'columns':['room_id','group_title','owner_id','created_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_invite_result'},'role':'user','permission':{'columns':['room_id','group_title','inviter_id','invited_at','invitee_id'],'filter':{'invitee_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'group_member_result'},'role':'user','permission':{'columns':['room_id','group_title','owner_id','member_id','accepted_at'],'filter':{'member_id':{'_eq':'X-Hasura-User-Id'}}}})
@@ -223,6 +229,21 @@ def main():
  r=req(MEMBER,'user',media_get,{'id':media_id,'start':0,'limit':4});chunks=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(len(chunks)==1 and chunks[0]['media_data']==media_part,'accepted member could not read media chunk')
  r=req(OUTSIDER,'user',media_get,{'id':media_id,'start':0,'limit':4});check(bool(r.get('errors')),'outsider read media chunk')
  r=req(OUTSIDER,'user',media_create,{'room':ROOM,'mime':'video/mp4'});check(bool(r.get('errors')),'outsider started media in private room')
+ # Exact APK wallpaper queries/mutations: room owner reads/creates/updates, outside user cannot read/write private wallpaper.
+ wallq='query($room:uuid!){room_wallpapers_by_pk(room_id:$room){room_id wallpaper_data updated_at}}'
+ wallmut='mutation($room:uuid!,$data:String!){insert_room_wallpapers_one(object:{room_id:$room,wallpaper_data:$data}){room_id}}'
+ wall='data:image/jpeg;base64,QUJD'
+ r=req(OWNER,'private_user_test',wallmut,{'room':ROOM,'data':wall});check(not r.get('errors') and (r.get('data') or {}).get('insert_room_wallpapers_one',{}).get('room_id')==ROOM,f'owner wallpaper insert failed: {r}')
+ r=req(MEMBER,'private_user_test',wallq,{'room':ROOM});check((r.get('data') or {}).get('room_wallpapers_by_pk',{}).get('wallpaper_data')==wall,'accepted member could not read shared wallpaper')
+ r=req(OUTSIDER,'private_user_test',wallq,{'room':ROOM});check(not (r.get('data') or {}).get('room_wallpapers_by_pk'),'outsider read private wallpaper')
+ updatewall='mutation($room:uuid!,$data:String!){update_room_wallpapers_by_pk(pk_columns:{room_id:$room},_set:{wallpaper_data:$data}){room_id}}'
+ wall2='data:image/jpeg;base64,REVG'
+ r=req(MEMBER,'private_user_test',updatewall,{'room':ROOM,'data':wall2});check(not r.get('errors'),'accepted member could not update wallpaper')
+ r=req(OWNER,'private_user_test',wallq,{'room':ROOM});check((r.get('data') or {}).get('room_wallpapers_by_pk',{}).get('wallpaper_data')==wall2,'updated wallpaper not shared')
+ r=req(OUTSIDER,'private_user_test',wallmut,{'room':ROOM,'data':wall});check(bool(r.get('errors')) or not (r.get('data') or {}).get('insert_room_wallpapers_one'),'outsider wrote private wallpaper')
+ # Exact APK delete_messages mutation shape. Only sender can delete own row; table delete disabled in candidate role.
+ deleteq='mutation($where:messages_bool_exp!){delete_messages(where:$where){affected_rows}}'
+ r=req(OWNER,'private_user_test',deleteq,{'where':{'id':{'_eq':'20000000-0000-0000-0000-000000000001'},'sender_id':{'_eq':OWNER},'room_id':{'_eq':ROOM}}});check(bool(r.get('errors')),'candidate private role unexpectedly allowed direct message deletion')
  # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
