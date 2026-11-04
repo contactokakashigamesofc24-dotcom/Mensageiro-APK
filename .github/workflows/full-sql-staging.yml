@@ -7,6 +7,8 @@ on:
       - .github/workflows/full-sql-staging.yml
       - .github/full-sql/full_run.sql
       - .github/full-sql/hasura_graphql_tests.py
+      - .github/full-sql/grant_runtime.sql
+      - .github/full-sql/post_grant_checks.sql
 permissions:
   contents: read
 concurrency:
@@ -18,23 +20,30 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Start disposable PostgreSQL and Hasura
+      - name: Start disposable PostgreSQL
         run: |
           set -e
           docker network create full-sql-net
           docker run -d --name full-sql-db --network full-sql-net -e POSTGRES_PASSWORD=test-only -e POSTGRES_DB=messenger_test postgres:16
           for i in $(seq 1 30); do docker exec full-sql-db pg_isready -U postgres -d messenger_test && break; sleep 2; done
           docker exec full-sql-db pg_isready -U postgres -d messenger_test
+      - name: Run complete scripts and runtime tests
+        run: docker exec -i full-sql-db psql -v ON_ERROR_STOP=1 -U postgres -d messenger_test < .github/full-sql/full_run.sql
+      - name: Grant disposable runtime privileges, not PostgreSQL PUBLIC
+        run: docker exec -i full-sql-db psql -v ON_ERROR_STOP=1 -U postgres -d messenger_test < .github/full-sql/grant_runtime.sql
+      - name: Verify privilege split
+        run: docker exec -i full-sql-db psql -v ON_ERROR_STOP=1 -U postgres -d messenger_test < .github/full-sql/post_grant_checks.sql
+      - name: Start Hasura with isolated runtime role
+        run: |
+          set -e
           docker run -d --name full-sql-hasura --network full-sql-net -p 8080:8080 \
-            -e HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \
+            -e HASURA_GRAPHQL_DATABASE_URL=postgres://hasura_runtime:runtime-only-disposable@full-sql-db:5432/messenger_test \
             -e HASURA_GRAPHQL_METADATA_DATABASE_URL=postgres://postgres:test-only@full-sql-db:5432/messenger_test \
             -e HASURA_GRAPHQL_ADMIN_SECRET=ephemeral-full-sql-admin \
             -e HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"ephemeral-full-sql-test-only-secret","claims_namespace":"https://hasura.io/jwt/claims"}' \
             -e HASURA_GRAPHQL_ENABLE_CONSOLE=false hasura/graphql-engine:v2.44.0
           for i in $(seq 1 60); do curl --fail --silent http://localhost:8080/healthz && break; sleep 2; done
           curl --fail --silent http://localhost:8080/healthz
-      - name: Run complete scripts and runtime tests
-        run: docker exec -i full-sql-db psql -v ON_ERROR_STOP=1 -U postgres -d messenger_test < .github/full-sql/full_run.sql
       - name: Track full schema and test GraphQL functions in Hasura
         run: python3 .github/full-sql/hasura_graphql_tests.py
       - name: Cleanup
