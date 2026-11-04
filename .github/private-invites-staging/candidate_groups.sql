@@ -18,7 +18,7 @@ BEGIN
 END;$fn$;
 CREATE OR REPLACE FUNCTION public.my_messenger_groups(hasura_session json)
 RETURNS SETOF public.group_member_result LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
- SELECT g.room_id,g.group_title,g.owner_id,m.user_id,m.accepted_at FROM public.messenger_groups g JOIN public.rooms r ON r.id=g.room_id JOIN public.room_members m ON m.room_id=g.room_id
+ SELECT g.room_id,r.title,g.owner_id,m.user_id,m.accepted_at FROM public.messenger_groups g JOIN public.rooms r ON r.id=g.room_id JOIN public.room_members m ON m.room_id=g.room_id
  WHERE hasura_session->>'x-hasura-role'='user' AND coalesce(hasura_session->>'x-hasura-user-id','') ~* '^[0-9a-f-]{36}$' AND m.user_id=(hasura_session->>'x-hasura-user-id')::uuid AND m.accepted_at IS NOT NULL;
 $fn$;
 CREATE OR REPLACE FUNCTION public.my_pending_group_invites(hasura_session json)
