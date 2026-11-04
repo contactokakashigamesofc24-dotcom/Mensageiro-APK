@@ -57,7 +57,7 @@ def main():
  q='query($roomId:uuid!){messages(where:{room_id:{_eq:$roomId}},order_by:{created_at:asc},limit:200){id room_id sender_id body created_at}}';rq='query { rooms(order_by:{created_at:desc}) { id title room_type created_by } }'
  def req(uid,role,query,vars=None):
   variables=vars or {}
-  if '$roomId' in query and 'id' in variables and 'roomId' not in variables:variables={**variables,'roomId':variables['id']}
+  if '$roomId' in query and 'id' in variables and 'roomId' not in variables:variables={**variables,'roomId':variables.pop('id')}
   return post('/v1/graphql',{'query':query,'variables':variables},{'Authorization':'Bearer '+jwt(role,uid)})[1]
  # Compare current exported policy: owner sees own private room/messages, other users do not.
  old_owner=req(OWNER,'user',q,{'id':ROOM});check(len((old_owner.get('data') or {}).get('messages') or [])>=1,f'old policy owner lost access: {old_owner}')
