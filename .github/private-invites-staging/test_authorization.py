@@ -20,7 +20,7 @@ def check(ok,msg):
 def main():
  source={'name':'default','kind':'postgres','configuration':{'connection_info':{'database_url':{'from_env':'HASURA_GRAPHQL_DATABASE_URL'},'isolation_level':'read-committed','use_prepared_statements':True}},'tables':[]}
  s,r=post('/v1/metadata',{'type':'replace_metadata','args':{'version':3,'sources':[source]}},{'X-Hasura-Admin-Secret':ADMIN});check(s==200 and r.get('message')=='success',str(r))
- for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result']:
+ for name in ['rooms','room_members','messages','messenger_profiles','messenger_friend_requests','private_invite_results','private_accepted_room_results','private_owner_member_results','private_room_results','message_result','messenger_groups','group_result','group_invite_result','group_member_result','friend_request_result','friend_profile_result','incoming_friend_result','presence_result','friend_presence_result']:
   meta('pg_track_table',{'source':'default','table':{'schema':'public','name':name}})
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
@@ -38,11 +38,17 @@ def main():
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'check':{'room_type':{'_eq':'private'}},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
  # The preceding private_user_test messages insert permission already represents the exact direct APK insert shape.
  # These function permissions are applied only to the isolated Hasura instance.
- for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite']:
+ for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','my_messenger_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','set_my_presence','my_friends_presence']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
   meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
- meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_profiles'},'role':'user','permission':{'columns':['user_id','display_name','avatar_data'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_friend_requests'},'role':'user','permission':{'columns':['requester_id','recipient_id','status'],'filter':{'$or':[{'requester_id':{'_eq':'X-Hasura-User-Id'}},{'recipient_id':{'_eq':'X-Hasura-User-Id'}}]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messenger_presence'},'role':'user','permission':{'columns':['user_id','last_seen'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'friend_request_result'},'role':'user','permission':{'columns':['request_id','status'],'filter':{}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'friend_profile_result'},'role':'user','permission':{'columns':['user_id','display_name','avatar_data'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'incoming_friend_result'},'role':'user','permission':{'columns':['request_id','user_id','display_name','avatar_data'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'presence_result'},'role':'user','permission':{'columns':['user_id','last_seen'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'friend_presence_result'},'role':'user','permission':{'columns':['user_id','is_online','last_seen'],'filter':{}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_invite_results'},'role':'user','permission':{'columns':['invitee_id','room_id','room_title','inviter_id','invited_at'],'filter':{'invitee_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_accepted_room_results'},'role':'user','permission':{'columns':['member_id','room_id','room_title','owner_id','joined_at'],'filter':{'member_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'private_owner_member_results'},'role':'user','permission':{'columns':['owner_id','room_id','user_id','invited_by','accepted_at','invited_at'],'filter':{'owner_id':{'_eq':'X-Hasura-User-Id'}}}})
@@ -59,6 +65,27 @@ def main():
   variables=vars or {}
   if '$roomId' in query and 'id' in variables and 'roomId' not in variables:variables['roomId']=variables.pop('id')
   return post('/v1/graphql',{'query':query,'variables':variables},{'Authorization':'Bearer '+jwt(role,uid)})[1]
+ # Exercise profile, friend, and presence operations by the APK's exact root-field names and arguments.
+ mine='query { my_messenger_profile { display_name avatar_data } }'
+ r=req(OWNER,'user',mine);profiles=(r.get('data') or {}).get('my_messenger_profile') or [];check(len(profiles)==1,'my_messenger_profile did not return caller profile')
+ save='mutation($name:String!,$avatar:String){upsert_my_profile(args:{p_display_name:$name,p_avatar_data:$avatar}){user_id display_name avatar_data}}'
+ r=req(OWNER,'user',save,{'name':'Updated Owner','avatar':None});rows=(r.get('data') or {}).get('upsert_my_profile') or [];check(len(rows)==1 and rows[0]['user_id']==OWNER and rows[0]['display_name']=='Updated Owner',f'profile upsert failed: {r}')
+ r=req(OUTSIDER,'user',save,{'name':'Spoof Owner','avatar':None});check(bool(r.get('errors')),'profile upsert unexpectedly spoofed another session')
+ friendreq='mutation($email:String!){request_friend_by_email(args:{p_email:$email}){request_id}}'
+ r=req(OWNER,'user',friendreq,{'email':'notfriend@example.test'});requests=(r.get('data') or {}).get('request_friend_by_email') or [];check(len(requests)==1,'friend request failed');request_id=requests[0]['request_id']
+ incoming='query { my_incoming_friend_requests { request_id user_id display_name avatar_data } }'
+ r=req(OUTSIDER,'user',incoming);items=(r.get('data') or {}).get('my_incoming_friend_requests') or [];check(any(x['request_id']==request_id and x['user_id']==OWNER for x in items),'recipient did not see own incoming friend request')
+ r=req(PENDING,'user',incoming);check(not ((r.get('data') or {}).get('my_incoming_friend_requests') or []),'unrelated user saw incoming friend request')
+ respond='mutation($id:uuid!,$accept:Boolean!){respond_friend_request(args:{p_request_id:$id,p_accept:$accept}){request_id status}}'
+ r=req(OWNER,'user',respond,{'id':request_id,'accept':True});check(bool(r.get('errors')),'requester responded as recipient')
+ r=req(OUTSIDER,'user',respond,{'id':request_id,'accept':True});rows=(r.get('data') or {}).get('respond_friend_request') or [];check(len(rows)==1 and rows[0]['status']=='accepted',f'recipient could not accept friend request: {r}')
+ friends='query { my_messenger_friends { user_id display_name avatar_data } }'
+ r=req(OWNER,'user',friends);check(any(x['user_id']==OUTSIDER for x in ((r.get('data') or {}).get('my_messenger_friends') or [])),'accepted friend missing from APK list')
+ setpresence='mutation($online:Boolean!){set_my_presence(args:{p_online:$online}){user_id last_seen}}'
+ r=req(OWNER,'user',setpresence,{'online':True});rows=(r.get('data') or {}).get('set_my_presence') or [];check(len(rows)==1 and rows[0]['user_id']==OWNER,'set_my_presence online failed')
+ presence='query { my_friends_presence { user_id is_online last_seen } }'
+ r=req(OUTSIDER,'user',presence);rows=(r.get('data') or {}).get('my_friends_presence') or [];check(any(x['user_id']==OWNER and x['is_online'] for x in rows),'friend presence did not report active friend')
+ r=req(OWNER,'user',setpresence,{'online':False});check(not r.get('errors'),'set_my_presence offline mutation failed')
  # Compare current exported policy: owner sees own private room/messages, other users do not.
  old_owner=req(OWNER,'user',q,{'id':ROOM});check(len((old_owner.get('data') or {}).get('messages') or [])>=1,f'old policy owner lost access: {old_owner}')
  for uid in [MEMBER,PENDING,OUTSIDER]:
