@@ -25,13 +25,13 @@ def main():
  meta('pg_create_object_relationship',{'source':'default','table':{'schema':'public','name':'messages'},'name':'room','using':{'foreign_key_constraint_on':'room_id'}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
  meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'private_room_results'},'name':'room_members','using':{'manual_configuration':{'remote_table':{'schema':'public','name':'room_members'},'column_mapping':{'id':'room_id'}}}})
- meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'user','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'user','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},{'created_by':{'_eq':'X-Hasura-User-Id'}}]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
  # The proposed private-user role differs only in private-room relation predicate: owner OR accepted membership.
  accepted={'_or':[{'created_by':{'_eq':'X-Hasura-User-Id'}},{'room_members':{'_and':[{'user_id':{'_eq':'X-Hasura-User-Id'}},{'accepted_at':{'_is_null':False}}]}}]}
- meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by'],'filter':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}})
+ meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'columns':['id','title','room_type','created_by','created_at'],'filter':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'columns':['id','room_id','sender_id','body','created_at'],'filter':{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}}})
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
  # Candidate role's direct insert permissions mirror the APK's insert_rooms_one / insert_messages_one shapes.
@@ -54,8 +54,11 @@ def main():
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'message_result'},'role':'user','permission':{'columns':['id','sender_id'],'filter':{'sender_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'message_result'},'role':'private_user_test','permission':{'columns':['id','sender_id'],'filter':{'sender_id':{'_eq':'X-Hasura-User-Id'}}}})
  meta('pg_create_select_permission',{'source':'default','table':{'schema':'public','name':'room_members'},'role':'private_user_test','permission':{'columns':['room_id','user_id','invited_by','accepted_at','created_at'],'filter':{'user_id':{'_eq':'X-Hasura-User-Id'}}}})
- q='query($id:uuid!){messages(where:{room_id:{_eq:$id}}){id sender_id body}}';rq='query { rooms { id title room_type } }'
- def req(uid,role,query,vars=None):return post('/v1/graphql',{'query':query,'variables':vars or {}},{'Authorization':'Bearer '+jwt(role,uid)})[1]
+ q='query($roomId:uuid!){messages(where:{room_id:{_eq:$roomId}},order_by:{created_at:asc},limit:200){id room_id sender_id body created_at}}';rq='query { rooms(order_by:{created_at:desc}) { id title room_type created_by } }'
+ def req(uid,role,query,vars=None):
+  variables=vars or {}
+  if '$roomId' in query and 'id' in variables and 'roomId' not in variables:variables={**variables,'roomId':variables['id']}
+  return post('/v1/graphql',{'query':query,'variables':variables},{'Authorization':'Bearer '+jwt(role,uid)})[1]
  # Compare current exported policy: owner sees own private room/messages, other users do not.
  old_owner=req(OWNER,'user',q,{'id':ROOM});check(len((old_owner.get('data') or {}).get('messages') or [])>=1,'old policy owner lost access')
  for uid in [MEMBER,PENDING,OUTSIDER]:
@@ -136,6 +139,9 @@ def main():
   r=req(uid,'user',sendq,{'room':ROOM,'body':'denied function message'});check(bool(r.get('errors')),f'{label} sent private function message')
  r=req(OWNER,'user',sendq,{'room':PUBLIC,'body':'public not allowed via private function'});check(bool(r.get('errors')),'private-message function accepted a public room')
  r=req(OWNER,'user',sendq,{'room':ROOM,'body':'   '});check(bool(r.get('errors')),'empty message body accepted')
+ # Confirm the APK's current [uuid!]! list variable is rejected for the SQL uuid[] argument; corrected scalar literal below is test-only.
+ apk_group_mut='mutation($title:String!,$members:[uuid!]!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
+ r=req(OWNER,'user',apk_group_mut,{'title':'APK group shape','members':[OUTSIDER]});check(bool(r.get('errors')),'unexpected compatibility: APK list input was accepted by uuid[] argument')
  # Test group functions against the GraphQL names, argument names, and response fields used by the APK.
  group_mut='mutation($title:String!,$members:_uuid!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
  # Hasura exposes PostgreSQL uuid[] as scalar _uuid. Pass the PostgreSQL array literal; the APK's JSON list/[uuid!]! shape is not compatible.
