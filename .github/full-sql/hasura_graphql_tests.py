@@ -63,7 +63,7 @@ def main():
     medias=gql(MEMBER,'query($room:uuid!){private_room_media_message_ids(args:{p_room_id:$room}){message_id mime_type}}',{'room':room})['private_room_media_message_ids']
     assert medias, 'no completed media returned through Hasura'
     mid=medias[0]['message_id']
-    pages=gql(MEMBER,'query($id:uuid!){get_private_room_media_chunks(args:{p_message_id:$id,p_start_index:1,p_limit:2){chunk_index media_data}}',{'id':mid})['get_private_room_media_chunks']
+    pages=gql(MEMBER,'query($id:uuid!){get_private_room_media_chunks(args:{p_message_id:$id,p_start_index:1,p_limit:2}){chunk_index media_data}}',{'id':mid})['get_private_room_media_chunks']
     assert [r['chunk_index'] for r in pages]==[1,2]
     status=gql(OWNER,'query { messenger_bot_status { enabled updated_at } }')['messenger_bot_status']
     assert len(status)==1 and status[0]['enabled'] is False
