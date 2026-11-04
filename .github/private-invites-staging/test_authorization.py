@@ -138,7 +138,8 @@ def main():
  r=req(OWNER,'user',sendq,{'room':ROOM,'body':'   '});check(bool(r.get('errors')),'empty message body accepted')
  # Test group functions against the GraphQL names, argument names, and response fields used by the APK.
  group_mut='mutation($title:String!,$members:_uuid!){create_private_messenger_group(args:{p_title:$title,p_member_ids:$members}){room_id group_title}}'
- r=req(OWNER,'user',group_mut,{'title':'Synthetic group','members':[OUTSIDER]});rows=(r.get('data') or {}).get('create_private_messenger_group') or [];check(len(rows)==1 and rows[0]['group_title']=='Synthetic group',f'group create operation failed: {r}');group_id=rows[0]['room_id']
+ # Hasura exposes PostgreSQL uuid[] as scalar _uuid. Pass the PostgreSQL array literal; the APK's JSON list/[uuid!]! shape is not compatible.
+ r=req(OWNER,'user',group_mut,{'title':'Synthetic group','members':'{'+OUTSIDER+'}'});rows=(r.get('data') or {}).get('create_private_messenger_group') or [];check(len(rows)==1 and rows[0]['group_title']=='Synthetic group',f'group create operation failed: {r}');group_id=rows[0]['room_id']
  group_list='query { my_messenger_groups { room_id group_title owner_id } }'
  r=req(OWNER,'user',group_list);check(any(x['room_id']==group_id for x in ((r.get('data') or {}).get('my_messenger_groups') or [])),'owner group listing missing')
  pending_group='query { my_pending_group_invites { room_id group_title inviter_id invited_at } }'
