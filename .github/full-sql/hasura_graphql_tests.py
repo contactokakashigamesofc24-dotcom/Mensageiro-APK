@@ -71,7 +71,8 @@ def main():
     assert changed['upsert_my_profile'][0]['user_id']==MEMBER and changed['upsert_my_profile'][0]['display_name']=='GraphQL member'
     rooms=gql(MEMBER,'query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }')['my_accepted_private_rooms']
     assert rooms, 'member did not receive accepted private room from complete SQL functions'
-    room=rooms[0]['room_id']
+    room=psql("SELECT id FROM public.rooms WHERE title='Full SQL private test' LIMIT 1")
+    assert room and psql("SELECT count(*) FROM public.room_members WHERE room_id='"+room+"'::uuid AND user_id='"+MEMBER+"'::uuid AND accepted_at IS NOT NULL")== '1', 'fixture private room or accepted member missing'
     audios=gql(MEMBER,'query($room:uuid!){private_room_audio_message_ids(args:{p_room_id:$room}){message_id}}',{'room':room})['private_room_audio_message_ids']
     assert audios, 'no completed audio returned through Hasura'
     aid=audios[0]['message_id']
@@ -97,7 +98,7 @@ def main():
     outsider_seed=gql_role('40000000-0000-0000-0000-000000000004','user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"private seed"}){id}}',{'room':outsider_private_room})
     assert outsider_seed[0]==200 and not outsider_seed[1].get('errors'), f'failed to seed other-owned private message: {outsider_seed}'
     member_owner_query=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
-    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], 'current legacy metadata unexpectedly exposes accepted private room'
+    assert member_owner_query[0]==200 and member_owner_query[1].get('data',{}).get('rooms')==[], f'current legacy metadata unexpectedly exposes accepted private room: {member_owner_query}'
     # Try the candidate accepted-member policy only in disposable Hasura metadata.
     meta('pg_create_array_relationship',{'source':'default','table':{'schema':'public','name':'rooms'},'name':'room_members','using':{'foreign_key_constraint_on':{'table':{'schema':'public','name':'room_members'},'column':'room_id'}}})
     meta('pg_drop_select_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'user'})
