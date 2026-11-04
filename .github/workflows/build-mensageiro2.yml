@@ -7,7 +7,7 @@ on:
       - 'mensageiro-2-fonte-salas-publicas.zip'
       - '.github/workflows/build-mensageiro2.yml'
 permissions:
-  contents: read
+  contents: write
   actions: write
 jobs:
   build:
@@ -30,13 +30,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Compilar APK
+      - name: Compilar APK com assinatura fixa
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle assembleDebug
-      - name: Guardar APK compilado para validação (sem publicar Release)
+      - name: Publicar APK para teste e transição única
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v2.2.10-assinatura-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk#Mensageiro-assinatura-fixa.apk \
+            --title "Mensageiro — assinatura fixa (${GITHUB_RUN_NUMBER})" \
+            --notes 'APK compilado com a nova chave fixa de assinatura. Esta versão pode exigir remover o app anteriormente instalado, pois usa uma chave diferente. A remoção pode apagar dados locais. Não instalar por cima da versão antiga; confirmar backup e login antes da troca.' \
+            --prerelease
+      - name: Guardar artefato de validação
         uses: actions/upload-artifact@v4
         with:
           name: mensageiro-apk-assinatura-fixa
