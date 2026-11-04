@@ -10,6 +10,8 @@ INSERT INTO auth.users(id,email,email_verified) VALUES
 ('40000000-0000-0000-0000-000000000006','notfriend@example.test',true),
 ('40000000-0000-0000-0000-000000000007','stranger@example.test',true);
 CREATE TABLE public.rooms(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),title text NOT NULL,room_type text NOT NULL CHECK(room_type IN ('public','private')),created_by uuid NOT NULL REFERENCES auth.users(id),created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE public.room_wallpapers(room_id uuid PRIMARY KEY REFERENCES public.rooms(id) ON DELETE CASCADE,wallpaper_data text NOT NULL,updated_by uuid NOT NULL REFERENCES auth.users(id),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE public.private_wallpaper_result(room_id uuid PRIMARY KEY,wallpaper_data text NOT NULL,updated_by uuid NOT NULL,updated_at timestamptz NOT NULL);
 CREATE TABLE public.room_members(room_id uuid NOT NULL REFERENCES public.rooms(id) ON DELETE CASCADE,user_id uuid NOT NULL,invited_by uuid,accepted_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(room_id,user_id));
 CREATE TABLE public.messenger_profiles(user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,display_name text NOT NULL,avatar_data text,updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE public.messenger_friend_requests(request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),requester_id uuid NOT NULL REFERENCES auth.users(id),recipient_id uuid NOT NULL REFERENCES auth.users(id),status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined')),created_at timestamptz NOT NULL DEFAULT now(),responded_at timestamptz,UNIQUE(requester_id,recipient_id));
