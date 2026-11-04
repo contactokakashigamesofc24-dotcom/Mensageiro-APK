@@ -7,7 +7,7 @@ INSERT INTO auth.users(id,email,email_verified) VALUES
 ('40000000-0000-0000-0000-000000000003','pending@example.test',true),
 ('40000000-0000-0000-0000-000000000004','outsider@example.test',true),
 ('40000000-0000-0000-0000-000000000005','unverified@example.test',false),
-('40000000-0000-0000-0000-000000000006','notfriend@example.test');
+('40000000-0000-0000-0000-000000000006','notfriend@example.test',true);
 CREATE TABLE public.rooms(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),title text NOT NULL,room_type text NOT NULL CHECK(room_type IN ('public','private')),created_by uuid NOT NULL REFERENCES auth.users(id),created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE public.room_members(room_id uuid NOT NULL REFERENCES public.rooms(id) ON DELETE CASCADE,user_id uuid NOT NULL,invited_by uuid,accepted_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(room_id,user_id));
 CREATE TABLE public.messenger_profiles(user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,display_name text NOT NULL);
