@@ -1,4 +1,4 @@
-name: Compilar Mensageiro 2 — etapa 3 inspeção somente leitura
+name: Compilar Mensageiro 2 — assinatura fixa
 on:
   workflow_dispatch:
   push:
@@ -7,7 +7,7 @@ on:
       - 'mensageiro-2-fonte-salas-publicas.zip'
       - '.github/workflows/build-mensageiro2.yml'
 permissions:
-  contents: write
+  contents: read
   actions: write
 jobs:
   build:
@@ -16,6 +16,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Extrair projeto Mensageiro 2
         run: python3 -m zipfile -e mensageiro-2-fonte-salas-publicas.zip .
+      - name: Preparar chave de assinatura
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/release-keystore.p12
+          chmod 600 app/release-keystore.p12
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,13 +31,14 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Compilar APK
-        run: gradle assembleDebug
-      - name: Publicar APK direto em Release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="v2.2.9-configuracoes-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk#Mensageiro-2.apk \
-            --title "Mensageiro — configurações locais (${GITHUB_RUN_NUMBER})" \
-            --notes 'Configurações locais: sair da conta neste aparelho, ajuste de tamanho do texto, atalho às permissões de notificação do Android e limpeza confirmada de arquivos temporários. Não inclui push de mensagens, integração funcional do Bot, nem alterações no backend. APK debug compilado pelo GitHub Actions; testar antes de uso.' \
-            --prerelease
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle assembleDebug
+      - name: Guardar APK compilado para validação (sem publicar Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mensageiro-apk-assinatura-fixa
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
