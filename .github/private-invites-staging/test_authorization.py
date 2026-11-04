@@ -212,31 +212,39 @@ def main():
  # Exact APK audio upload/query/download operations: accepted member can finish/read; outsiders cannot start/read.
  audio_create='mutation($room:uuid!){create_private_room_audio(args:{p_room_id:$room}){message_id}}'
  r=req(MEMBER,'user',audio_create,{'room':ROOM});audio_rows=(r.get('data') or {}).get('create_private_room_audio') or [];check(len(audio_rows)==1,f'accepted member could not start audio: {r}');audio_id=audio_rows[0]['message_id']
- audio_part='data:audio/mp4;base64,QUJD'
+ audio_part='data:audio/mp4;base64,QUJD';audio_part2='data:audio/mp4;base64,REVG'
  audio_add='mutation($id:uuid!,$index:Int!,$audio:String!){add_private_room_audio_chunk(args:{p_message_id:$id,p_chunk_index:$index,p_audio_data:$audio}){chunk_index}}'
- r=req(MEMBER,'user',audio_add,{'id':audio_id,'index':0,'audio':audio_part});check(not r.get('errors'),f'audio chunk add failed: {r}')
+ r=req(MEMBER,'user',audio_add,{'id':audio_id,'index':0,'audio':audio_part});check(not r.get('errors'),f'audio chunk 0 add failed: {r}')
+ r=req(MEMBER,'user',audio_add,{'id':audio_id,'index':1,'audio':audio_part2});check(not r.get('errors'),f'audio chunk 1 add failed: {r}')
  audio_done='mutation($id:uuid!,$count:Int!){complete_private_room_audio(args:{p_message_id:$id,p_chunk_count:$count}){message_id chunk_count}}'
- r=req(MEMBER,'user',audio_done,{'id':audio_id,'count':1});check(not r.get('errors'),f'audio completion failed: {r}')
+ r=req(MEMBER,'user',audio_done,{'id':audio_id,'count':1});check(bool(r.get('errors')),'audio with missing chunk was marked complete')
+ r=req(MEMBER,'user',audio_done,{'id':audio_id,'count':2});check(not r.get('errors'),f'audio completion failed: {r}')
  audio_ids='query($roomId:uuid!){private_room_audio_message_ids(args:{p_room_id:$roomId}){message_id}}'
  r=req(MEMBER,'user',audio_ids,{'roomId':ROOM});check(any(x['message_id']==audio_id for x in ((r.get('data') or {}).get('private_room_audio_message_ids') or [])),'audio id missing to accepted member')
  audio_get='query($id:uuid!,$start:Int!,$limit:Int!){get_private_room_audio_chunks(args:{p_message_id:$id,p_start_index:$start,p_limit:$limit}){chunk_index audio_data}}'
- r=req(MEMBER,'user',audio_get,{'id':audio_id,'start':0,'limit':4});chunks=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check(len(chunks)==1 and chunks[0]['audio_data']==audio_part,'accepted member could not read audio chunk')
+ r=req(MEMBER,'user',audio_get,{'id':audio_id,'start':0,'limit':1});chunks=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check(len(chunks)==1 and chunks[0]['chunk_index']==0 and chunks[0]['audio_data']==audio_part,'accepted member could not read first audio page')
+ r=req(MEMBER,'user',audio_get,{'id':audio_id,'start':1,'limit':1});chunks=(r.get('data') or {}).get('get_private_room_audio_chunks') or [];check(len(chunks)==1 and chunks[0]['chunk_index']==1 and chunks[0]['audio_data']==audio_part2,'accepted member could not read second audio page')
+ r=req(MEMBER,'user',audio_get,{'id':audio_id,'start':0,'limit':5});check(bool(r.get('errors')),'audio pagination exceeded maximum page size')
  r=req(OUTSIDER,'user',audio_get,{'id':audio_id,'start':0,'limit':4});check(bool(r.get('errors')),'outsider read audio chunk')
  r=req(OUTSIDER,'user',audio_create,{'room':ROOM});check(bool(r.get('errors')),'outsider started audio in private room')
  # Exact APK media upload/query/download operations.
  media_create='mutation($room:uuid!,$mime:String!){create_private_room_media(args:{p_room_id:$room,p_mime_type:$mime}){message_id}}'
  r=req(MEMBER,'user',media_create,{'room':ROOM,'mime':'image/jpeg'});media_rows=(r.get('data') or {}).get('create_private_room_media') or [];check(len(media_rows)==1,'accepted member could not start photo upload');media_id=media_rows[0]['message_id']
- media_part='data:image/jpeg;base64,QUJD'
+ media_part='data:image/jpeg;base64,QUJD';media_part2='data:image/jpeg;base64,REVG'
  media_add='mutation($id:uuid!,$index:Int!,$mime:String!,$data:String!){add_private_room_media_chunk(args:{p_message_id:$id,p_chunk_index:$index,p_mime_type:$mime,p_media_data:$data}){chunk_index}}'
- r=req(MEMBER,'user',media_add,{'id':media_id,'index':0,'mime':'image/jpeg','data':media_part});check(not r.get('errors'),f'media chunk add failed: {r}')
- media_done='mutation($id:uuid!,$count:Int!){complete_private_room_media(args:{p_message_id:$id,p_chunk_count:$count}){message_id}}'
- r=req(MEMBER,'user',media_done,{'id':media_id,'count':1});check(not r.get('errors'),f'media completion failed: {r}')
+ r=req(MEMBER,'user',media_add,{'id':media_id,'index':0,'mime':'image/jpeg','data':media_part});check(not r.get('errors'),f'media chunk 0 add failed: {r}')
+ r=req(MEMBER,'user',media_add,{'id':media_id,'index':1,'mime':'image/jpeg','data':media_part2});check(not r.get('errors'),f'media chunk 1 add failed: {r}')
+ media_done='mutation($id:uuid!,$count:Int!){complete_private_room_media(args:{p_message_id:$id,p_chunk_count:$count){message_id}}'
+ r=req(MEMBER,'user',media_done,{'id':media_id,'count':1});check(bool(r.get('errors')),'media with missing chunk was marked complete')
+ r=req(MEMBER,'user',media_done,{'id':media_id,'count':2});check(not r.get('errors'),f'media completion failed: {r}')
  media_ids='query($roomId:uuid!){private_room_media_message_ids(args:{p_room_id:$roomId}){message_id mime_type}}'
  r=req(MEMBER,'user',media_ids,{'roomId':ROOM});check(any(x['message_id']==media_id for x in ((r.get('data') or {}).get('private_room_media_message_ids') or [])),'media id missing')
  media_info='query($id:uuid!){private_room_media_info(args:{p_message_id:$id}){mime_type chunk_count}}'
  r=req(MEMBER,'user',media_info,{'id':media_id});infos=(r.get('data') or {}).get('private_room_media_info') or [];check(len(infos)==1 and infos[0]['mime_type']=='image/jpeg','media info missing for member')
  media_get='query($id:uuid!,$start:Int!,$limit:Int!){get_private_room_media_chunks(args:{p_message_id:$id,p_start_index:$start,p_limit:$limit}){chunk_index media_data}}'
- r=req(MEMBER,'user',media_get,{'id':media_id,'start':0,'limit':4});chunks=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(len(chunks)==1 and chunks[0]['media_data']==media_part,'accepted member could not read media chunk')
+ r=req(MEMBER,'user',media_get,{'id':media_id,'start':0,'limit':1});chunks=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(len(chunks)==1 and chunks[0]['chunk_index']==0 and chunks[0]['media_data']==media_part,'accepted member could not read first media page')
+ r=req(MEMBER,'user',media_get,{'id':media_id,'start':1,'limit':1});chunks=(r.get('data') or {}).get('get_private_room_media_chunks') or [];check(len(chunks)==1 and chunks[0]['chunk_index']==1 and chunks[0]['media_data']==media_part2,'accepted member could not read second media page')
+ r=req(MEMBER,'user',media_get,{'id':media_id,'start':0,'limit':5});check(bool(r.get('errors')),'media pagination exceeded maximum page size')
  r=req(OUTSIDER,'user',media_get,{'id':media_id,'start':0,'limit':4});check(bool(r.get('errors')),'outsider read media chunk')
  r=req(OUTSIDER,'user',media_create,{'room':ROOM,'mime':'video/mp4'});check(bool(r.get('errors')),'outsider started media in private room')
  # Exact APK wallpaper queries/mutations: room owner reads/creates/updates, outside user cannot read/write private wallpaper.
