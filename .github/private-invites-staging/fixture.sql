@@ -17,6 +17,8 @@ CREATE TABLE public.messages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),room_
 CREATE VIEW public.private_invite_results AS SELECT m.user_id AS invitee_id,r.id AS room_id,r.title AS room_title,m.invited_by AS inviter_id,m.created_at AS invited_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.accepted_at IS NULL AND r.room_type='private';
 CREATE VIEW public.private_accepted_room_results AS SELECT m.user_id AS member_id,r.id AS room_id,r.title AS room_title,r.created_by AS owner_id,m.accepted_at AS joined_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.accepted_at IS NOT NULL AND r.room_type='private';
 CREATE VIEW public.private_owner_member_results AS SELECT r.created_by AS owner_id,r.id AS room_id,m.user_id,m.invited_by,m.accepted_at,m.created_at AS invited_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE r.room_type='private';
+CREATE VIEW public.private_room_results AS SELECT r.id,r.title,r.room_type,r.created_by,r.created_at FROM public.rooms r WHERE r.room_type='private';
+CREATE VIEW public.message_result AS SELECT m.id,m.sender_id FROM public.messages m;
 INSERT INTO public.messenger_profiles(user_id,display_name) SELECT id,'Synthetic profile' FROM auth.users;
 INSERT INTO public.messenger_friend_requests(requester_id,recipient_id,status) VALUES
 ('40000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002','accepted'),
