@@ -27,22 +27,21 @@ BEGIN
 END;$fn$;
 
 CREATE OR REPLACE FUNCTION public.my_pending_private_invites(hasura_session json)
-RETURNS SETOF public.private_invite_results LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
-DECLARE v_actor uuid;
-BEGIN
- IF coalesce(hasura_session->>'x-hasura-role','')<>'user' OR coalesce(hasura_session->>'x-hasura-user-id','') !~* '^[0-9a-f-]{36}$' THEN RAISE EXCEPTION 'Not authorized'; END IF;
- v_actor:=(hasura_session->>'x-hasura-user-id')::uuid;
- RETURN QUERY SELECT v_actor,r.id,r.title,m.invited_by,m.created_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.user_id=v_actor AND m.accepted_at IS NULL AND r.room_type='private';
-END;$fn$;
+RETURNS SETOF public.private_invite_results LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
+ SELECT m.user_id AS invitee_id,r.id AS room_id,r.title AS room_title,m.invited_by AS inviter_id,m.created_at AS invited_at
+ FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id
+ WHERE m.user_id=(hasura_session->>'x-hasura-user-id')::uuid AND hasura_session->>'x-hasura-role'='user' AND m.accepted_at IS NULL AND r.room_type='private';
+$fn$;
 
 CREATE OR REPLACE FUNCTION public.my_accepted_private_rooms(hasura_session json)
-RETURNS SETOF public.private_accepted_room_results LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
-DECLARE v_actor uuid;
-BEGIN
- IF coalesce(hasura_session->>'x-hasura-role','')<>'user' OR coalesce(hasura_session->>'x-hasura-user-id','') !~* '^[0-9a-f-]{36}$' THEN RAISE EXCEPTION 'Not authorized'; END IF;
- v_actor:=(hasura_session->>'x-hasura-user-id')::uuid;
- RETURN QUERY SELECT v_actor,r.id,r.title,r.created_by,m.accepted_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.user_id=v_actor AND m.accepted_at IS NOT NULL AND r.room_type='private';
-END;$fn$;
+RETURNS SETOF public.private_accepted_room_results LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
+ SELECT m.user_id AS member_id,r.id AS room_id,r.title AS room_title,r.created_by AS owner_id,m.accepted_at AS joined_at
+ FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id
+ WHERE hasura_session->>'x-hasura-role'='user'
+   AND coalesce(hasura_session->>'x-hasura-user-id','') ~* '^[0-9a-f-]{36}$'
+   AND m.user_id=(hasura_session->>'x-hasura-user-id')::uuid
+   AND m.accepted_at IS NOT NULL AND r.room_type='private';
+$fn$;
 
 CREATE OR REPLACE FUNCTION public.owner_room_members(p_room_id uuid,hasura_session json)
 RETURNS SETOF public.private_owner_member_results LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
