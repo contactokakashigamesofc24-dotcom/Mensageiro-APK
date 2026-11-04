@@ -64,6 +64,13 @@ jobs:
       - name: Criar candidatas de perfil e presença no ambiente descartável
         run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/candidate_profile_presence.sql
 
+      - name: Criar helper de autorização de salas para perfil e anexos
+        run: |
+          docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test <<'SQL'
+          CREATE OR REPLACE FUNCTION public.messenger_user_can_access_private_room(p_room_id uuid,p_user_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$ SELECT EXISTS(SELECT 1 FROM public.rooms r WHERE r.id=p_room_id AND r.room_type='private' AND (r.created_by=p_user_id OR EXISTS(SELECT 1 FROM public.room_members m WHERE m.room_id=r.id AND m.user_id=p_user_id AND m.accepted_at IS NOT NULL))); $fn$;
+          SQL
+          docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/candidate_profile_queries.sql
+
       - name: Criar candidatas de anexos no ambiente descartável
         run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/candidate_attachments.sql
 
