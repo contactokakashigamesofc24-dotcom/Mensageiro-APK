@@ -13,10 +13,10 @@ CREATE TABLE public.room_members(room_id uuid NOT NULL REFERENCES public.rooms(i
 CREATE TABLE public.messenger_profiles(user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,display_name text NOT NULL);
 CREATE TABLE public.messenger_friend_requests(request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),requester_id uuid NOT NULL REFERENCES auth.users(id),recipient_id uuid NOT NULL REFERENCES auth.users(id),status text NOT NULL CHECK(status IN ('pending','accepted','declined')),UNIQUE(requester_id,recipient_id));
 CREATE TABLE public.messages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),room_id uuid NOT NULL REFERENCES public.rooms(id),sender_id uuid NOT NULL,body text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
--- Hasura custom SQL functions must return SETOF a tracked table; these typed result tables are tracked only in this ephemeral test.
-CREATE TABLE public.private_invite_results(invitee_id uuid NOT NULL,room_id uuid NOT NULL,room_title text NOT NULL,inviter_id uuid NOT NULL,invited_at timestamptz NOT NULL);
-CREATE TABLE public.private_accepted_room_results(member_id uuid NOT NULL,room_id uuid NOT NULL,room_title text NOT NULL,owner_id uuid NOT NULL,joined_at timestamptz NOT NULL);
-CREATE TABLE public.private_owner_member_results(owner_id uuid NOT NULL,room_id uuid NOT NULL,user_id uuid NOT NULL,invited_by uuid,accepted_at timestamptz,invited_at timestamptz NOT NULL);
+-- Read-only views provide Hasura-trackable composite return types for synthetic list functions.
+CREATE VIEW public.private_invite_results AS SELECT m.user_id AS invitee_id,r.id AS room_id,r.title AS room_title,m.invited_by AS inviter_id,m.created_at AS invited_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.accepted_at IS NULL AND r.room_type='private';
+CREATE VIEW public.private_accepted_room_results AS SELECT m.user_id AS member_id,r.id AS room_id,r.title AS room_title,r.created_by AS owner_id,m.accepted_at AS joined_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE m.accepted_at IS NOT NULL AND r.room_type='private';
+CREATE VIEW public.private_owner_member_results AS SELECT r.created_by AS owner_id,r.id AS room_id,m.user_id,m.invited_by,m.accepted_at,m.created_at AS invited_at FROM public.room_members m JOIN public.rooms r ON r.id=m.room_id WHERE r.room_type='private';
 INSERT INTO public.messenger_profiles(user_id,display_name) SELECT id,'Synthetic profile' FROM auth.users;
 INSERT INTO public.messenger_friend_requests(requester_id,recipient_id,status) VALUES
 ('40000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002','accepted'),
