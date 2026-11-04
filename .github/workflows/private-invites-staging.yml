@@ -61,6 +61,9 @@ jobs:
       - name: Criar candidatas de grupos no ambiente descartável
         run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/candidate_groups.sql
 
+      - name: Criar candidatas de perfil e presença no ambiente descartável
+        run: docker exec -i private-invite-postgres psql -v ON_ERROR_STOP=1 -U postgres -d private_invite_test < .github/private-invites-staging/candidate_profile_presence.sql
+
       - name: Testar permissões de dono, membro aceito, pendente e terceiro
         run: python3 .github/private-invites-staging/test_authorization.py
 
