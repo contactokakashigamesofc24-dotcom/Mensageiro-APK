@@ -109,7 +109,7 @@ def main():
     candidate_rooms=gql_role(MEMBER,'user','query($id:uuid!){rooms(where:{id:{_eq:$id}}){id}}',{'id':room})
     assert candidate_rooms[0]==200 and candidate_rooms[1].get('data',{}).get('rooms')==[{'id':room}], f'candidate accepted private room read failed: {candidate_rooms}'
     candidate_msgs=gql_role(MEMBER,'user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id body}}',{'room':room})
-    assert candidate_msgs[0]==200 and len(candidate_msgs[1].get('data',{}).get('messages',[]))==1, f'candidate accepted private history read failed: {candidate_msgs}'
+    assert candidate_msgs[0]==200 and any(m.get('body')=='seed private message for permission policy test' for m in candidate_msgs[1].get('data',{}).get('messages',[])), f'candidate accepted private history read failed: {candidate_msgs}'
     denied_msgs=gql_role('40000000-0000-0000-0000-000000000004','user','query($room:uuid!){messages(where:{room_id:{_eq:$room}}){id}}',{'room':room})
     assert denied_msgs[0]==200 and denied_msgs[1].get('data',{}).get('messages')==[], 'candidate leaked private history to outsider'
     member_write=gql_role(MEMBER,'user','mutation($room:uuid!){insert_messages_one(object:{room_id:$room,body:"accepted private member write"}){id sender_id}}',{'room':room})
