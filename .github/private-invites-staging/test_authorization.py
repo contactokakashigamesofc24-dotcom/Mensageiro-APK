@@ -115,10 +115,6 @@ def main():
  acceptedq='query { my_accepted_private_rooms { room_id room_title owner_id joined_at } }'
  r=req(PENDING,'user',acceptedq);check(any(x['room_id']=='10000000-0000-0000-0000-000000000003' for x in ((r.get('data') or {}).get('my_accepted_private_rooms') or [])),f'accepted room missing: {r}')
  r=req(PENDING,'private_user_test',q,{'id':'10000000-0000-0000-0000-000000000003'});check(len((r.get('data') or {}).get('messages') or [])==0,'new empty accepted room unexpectedly contains messages')
- # The isolated candidate functions use the same root field names and argument objects as the APK operations.
- for fn in ['create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite']:
-  meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
-  meta('pg_create_function_permission',{'source':'default','function':fn,'role':'user'})
  # Exercise the exact direct insert GraphQL field/argument shapes currently used by the APK.
  apk_create='mutation($object:rooms_insert_input!){insert_rooms_one(object:$object){id title room_type created_by}}'
  r=req(OWNER,'private_user_test',apk_create,{'object':{'title':'Synthetic APK-created private room','room_type':'private'}});created=((r.get('data') or {}).get('insert_rooms_one') or {});check(created.get('room_type')=='private' and created.get('created_by')==OWNER,f'APK insert_rooms_one failed for owner: {r}');apk_room=created['id']
