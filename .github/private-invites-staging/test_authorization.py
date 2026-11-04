@@ -38,7 +38,8 @@ def main():
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'check':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]},'set':{'sender_id':'X-Hasura-User-Id'},'columns':['room_id','body']}})
  # Candidate role's direct insert permissions mirror the APK's insert_rooms_one / insert_messages_one shapes.
  meta('pg_create_insert_permission',{'source':'default','table':{'schema':'public','name':'rooms'},'role':'private_user_test','permission':{'check':{'room_type':{'_eq':'private'}},'set':{'created_by':'X-Hasura-User-Id'},'columns':['title','room_type']}})
- # The preceding private_user_test messages insert permission already represents the exact direct APK insert shape.
+ # Delete candidate is narrowly bound to session sender and room access; the APK also supplies room/message IDs.
+ meta('pg_create_delete_permission',{'source':'default','table':{'schema':'public','name':'messages'},'role':'private_user_test','permission':{'filter':{'_and':[{'sender_id':{'_eq':'X-Hasura-User-Id'}},{'room':{'_or':[{'room_type':{'_eq':'public'}},accepted]}}]}}})
  # These function permissions are applied only to the isolated Hasura instance.
  for fn in ['invite_room_member_by_email','accept_private_room_invite','my_pending_private_invites','my_accepted_private_rooms','owner_room_members','create_private_room_candidate','send_private_message_candidate','my_owned_private_rooms_candidate','create_private_messenger_group','my_messenger_groups','my_pending_group_invites','accept_messenger_group_invite','my_messenger_profile','upsert_my_profile','request_friend_by_email','respond_friend_request','my_messenger_friends','my_incoming_friend_requests','set_my_presence','my_friends_presence','create_private_room_audio','add_private_room_audio_chunk','complete_private_room_audio','private_room_audio_message_ids','get_private_room_audio_chunks','create_private_room_media','add_private_room_media_chunk','complete_private_room_media','private_room_media_message_ids','private_room_media_info','get_private_room_media_chunks']:
   meta('pg_track_function',{'source':'default','function':{'schema':'public','name':fn},'configuration':{'session_argument':'hasura_session'}})
@@ -241,14 +242,24 @@ def main():
  r=req(MEMBER,'private_user_test',updatewall,{'room':ROOM,'data':wall2});check(not r.get('errors'),'accepted member could not update wallpaper')
  r=req(OWNER,'private_user_test',wallq,{'room':ROOM});check((r.get('data') or {}).get('room_wallpapers_by_pk',{}).get('wallpaper_data')==wall2,'updated wallpaper not shared')
  r=req(OUTSIDER,'private_user_test',wallmut,{'room':ROOM,'data':wall});check(bool(r.get('errors')) or not (r.get('data') or {}).get('insert_room_wallpapers_one'),'outsider wrote private wallpaper')
- # Exact APK delete_messages mutation shape. Only sender can delete own row; table delete disabled in candidate role.
+ # Exact APK delete_messages mutation shape: own message can be deleted; cannot delete another sender's row or another room's row.
  deleteq='mutation($where:messages_bool_exp!){delete_messages(where:$where){affected_rows}}'
- r=req(OWNER,'private_user_test',deleteq,{'where':{'id':{'_eq':'20000000-0000-0000-0000-000000000001'},'sender_id':{'_eq':OWNER},'room_id':{'_eq':ROOM}}});check(bool(r.get('errors')),'candidate private role unexpectedly allowed direct message deletion')
+ msgq='query($roomId:uuid!){messages(where:{room_id:{_eq:$roomId}},order_by:{created_at:asc},limit:200){id room_id sender_id body created_at}}'
+ r=req(OWNER,'private_user_test',msgq,{'roomId':ROOM});owner_msgs=(r.get('data') or {}).get('messages') or [];own_id=next((m['id'] for m in owner_msgs if m['sender_id']==OWNER),None);member_id=next((m['id'] for m in owner_msgs if m['sender_id']==MEMBER),None);check(own_id and member_id,'fixture messages missing for delete test')
+ def delete_for(uid,msgid,roomid):return req(uid,'private_user_test',deleteq,{'where':{'id':{'_eq':msgid},'sender_id':{'_eq':uid},'room_id':{'_eq':roomid}}})
+ r=delete_for(OWNER,own_id,ROOM);check(not r.get('errors') and ((r.get('data') or {}).get('delete_messages') or {}).get('affected_rows')==1,f'author could not delete own message: {r}')
+ r=delete_for(OWNER,member_id,ROOM);check(not r.get('errors') and ((r.get('data') or {}).get('delete_messages') or {}).get('affected_rows')==0,f'owner deleted another sender message: {r}')
+ r=delete_for(OWNER,member_id,PUBLIC);check(not r.get('errors') and ((r.get('data') or {}).get('delete_messages') or {}).get('affected_rows')==0,f'wrong-room delete affected row: {r}')
+ r=req(MEMBER,'private_user_test',msgq,{'roomId':ROOM});remaining=(r.get('data') or {}).get('messages') or [];check(not any(m['id']==own_id for m in remaining) and any(m['id']==member_id for m in remaining),'delete did not affect only authorized own message')
+ # Pending invitee and outsider cannot delete even if they forge sender/room selectors.
+ r=delete_for(PENDING,member_id,ROOM);check(not r.get('errors') and ((r.get('data') or {}).get('delete_messages') or {}).get('affected_rows')==0,'pending invitee deleted message')
+ r=delete_for(OUTSIDER,member_id,ROOM);check(not r.get('errors') and ((r.get('data') or {}).get('delete_messages') or {}).get('affected_rows')==0,'outsider deleted message')
  # Ensure client cannot directly add/accept membership; no insert permission on room_members.
  forged='mutation($room:uuid!,$uid:uuid!){insert_room_members_one(object:{room_id:$room,user_id:$uid,invited_by:$uid}){room_id}}'
  r=req(OWNER,'user',forged,{'room':ROOM,'uid':OUTSIDER});check(bool(r.get('errors')),'client could directly forge room membership')
  print('PASS: APK profile, friend request/response, and presence operations use injected caller identity')
  print('PASS: APK private audio/media upload, completion and reads work for accepted member; outsiders denied')
+ print('PASS: APK delete mutation removes only caller-owned message in authorized room; pending/outsider/forged selectors affect zero rows')
  print('PASS: exact APK room/message read and insert operations align with candidate private-room permissions')
  print('PASS: current exported private message policy owner-only reproduced; accepted member denied')
  print('PASS: candidate policy grants owner and accepted member, denies pending/outsider for known UUID')
