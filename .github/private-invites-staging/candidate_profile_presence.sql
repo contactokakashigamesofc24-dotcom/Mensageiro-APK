@@ -36,11 +36,11 @@ BEGIN
 END;$fn$;
 CREATE OR REPLACE FUNCTION public.my_messenger_friends(hasura_session json)
 RETURNS SETOF public.friend_profile_result LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
- SELECT p.user_id,p.display_name,p.avatar_data FROM public.messenger_friend_requests r JOIN public.messenger_profiles p ON p.user_id=CASE WHEN r.requester_id=(hasura_session->>'x-hasura-user-id')::uuid THEN r.recipient_id ELSE r.requester_id END WHERE hasura_session->>'x-hasura-role'='user' AND r.status='accepted' AND (r.requester_id=(hasura_session->>'x-hasura-user-id')::uuid OR r.recipient_id=(hasura_session->>'x-hasura-user-id')::uuid);
+ SELECT (hasura_session->>'x-hasura-user-id')::uuid,p.user_id,p.display_name,p.avatar_data FROM public.messenger_friend_requests r JOIN public.messenger_profiles p ON p.user_id=CASE WHEN r.requester_id=(hasura_session->>'x-hasura-user-id')::uuid THEN r.recipient_id ELSE r.requester_id END WHERE hasura_session->>'x-hasura-role'='user' AND r.status='accepted' AND (r.requester_id=(hasura_session->>'x-hasura-user-id')::uuid OR r.recipient_id=(hasura_session->>'x-hasura-user-id')::uuid);
 $fn$;
 CREATE OR REPLACE FUNCTION public.my_incoming_friend_requests(hasura_session json)
 RETURNS SETOF public.incoming_friend_result LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
- SELECT r.request_id,p.user_id,p.display_name,p.avatar_data FROM public.messenger_friend_requests r JOIN public.messenger_profiles p ON p.user_id=r.requester_id WHERE hasura_session->>'x-hasura-role'='user' AND r.recipient_id=(hasura_session->>'x-hasura-user-id')::uuid AND r.status='pending';
+ SELECT r.recipient_id,r.request_id,p.user_id,p.display_name,p.avatar_data FROM public.messenger_friend_requests r JOIN public.messenger_profiles p ON p.user_id=r.requester_id WHERE hasura_session->>'x-hasura-role'='user' AND r.recipient_id=(hasura_session->>'x-hasura-user-id')::uuid AND r.status='pending';
 $fn$;
 CREATE OR REPLACE FUNCTION public.set_my_presence(p_online boolean,hasura_session json)
 RETURNS SETOF public.presence_result LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,auth AS $fn$
