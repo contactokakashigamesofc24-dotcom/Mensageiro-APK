@@ -1,14 +1,8 @@
-name: Compilar Mensageiro 2 — assinatura fixa
+name: Compilar Mensageiro — integração UnifiedPush (preparação)
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'mensageiro-2-fonte-salas-publicas.zip'
-      - '.github/workflows/build-mensageiro2.yml'
 permissions:
   contents: write
-  actions: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,18 +30,19 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle assembleDebug
-      - name: Publicar APK para teste e transição única
+      - name: Publicar APK de preparação para teste
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v2.2.10-assinatura-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk#Mensageiro-assinatura-fixa.apk \
-            --title "Mensageiro — assinatura fixa (${GITHUB_RUN_NUMBER})" \
-            --notes 'APK compilado com a nova chave fixa de assinatura. Esta versão pode exigir remover o app anteriormente instalado, pois usa uma chave diferente. A remoção pode apagar dados locais. Não instalar por cima da versão antiga; confirmar backup e login antes da troca.' \
+          TAG="v2.2.11-unifiedpush-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk#Mensageiro-UnifiedPush.apk \
+            --title "Mensageiro — integração UnifiedPush (${GITHUB_RUN_NUMBER})" \
+            --notes 'APK de preparação da integração Android UnifiedPush: guarda o endpoint com proteção e usa rotas do backend ainda não implantado. A entrega de notificações não está ativa. Não confundir build com teste real no aparelho ou ativação do servidor.' \
             --prerelease
       - name: Guardar artefato de validação
         uses: actions/upload-artifact@v4
         with:
-          name: mensageiro-apk-assinatura-fixa
+          name: mensageiro-unifiedpush-preparacao
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
